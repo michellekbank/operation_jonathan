@@ -1,47 +1,60 @@
 import os
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.llms import Ollama # For LLM
-from langchain_community.embeddings import OllamaEmbeddings # For Embeddings
+from langchain_community.llms import Ollama
+from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.chains.summarize import load_summarize_chain
-from langchain.chains import create_extraction_chain
 from langchain.docstore.document import Document # Import Document class explicitly
+import json # To pretty print extracted schema data
 
+# --- Configuration ---
+DOCUMENT_LIBRARY_PATH = "./my_manuals" # Create a folder named 'my_manuals' for your documents
 
-# --- SETUP ---
+# Names of your three employee manuals
+# MAKE SURE THESE FILENAMES MATCH YOUR ACTUAL FILES IN THE 'my_manuals' FOLDER
+MANUAL_OLD_OLD_NAME = "employee_manual_v1_old_old.txt" # The oldest version
+MANUAL_OLD_NAME = "employee_manual_v2_old.txt"      # The middle version
+MANUAL_NEWEST_NAME = "employee_manual_v3_newest.txt" # The newest version
 
-DOCUMENT_LIBRARY_PATH = "./my_documents"
-EMPLOYEE_MANUAL_A_NAME = "employee_manual_A.txt" # Name of your guidelines document
-EMPLOYEE_MANUAL_B_NAME = "employee_manual_B.txt" # Name of your guidelines document
-EMPLOYEE_MANUAL_C_NAME = "employee_manual_C.txt"
-
-# --- OLLAMA MODEL SETUP ---
+# --- Ollama Model Configuration ---
 OLLAMA_LLM_MODEL = "gemma3:latest"
-OLLAMA_EMBEDDING_MODEL = "gemma3:latest" # Ollama models often provide embeddings from the same model
+OLLAMA_EMBEDDING_MODEL = "gemma3:latest"
 
-EMPLOYEE_MANUAL_SCHEMA = {
-    "properties": {
-        "manual_title": {"type": "string", "description": "The official title of the employee manual."},
-        "company_name": {"type": "string", "description": "The name of the company this manual belongs to."},
-        "sick_leave_policy": {"type": "string", "description": "A summary of the sick leave policy."},
-        "vacation_policy": {"type": "string", "description": "A summary of the vacation leave policy."},
-        "anti_discrimination_statement": {"type": "string", "description": "The explicit statement about anti-discrimination."}
-    },
-    "required": ["manual_title", "company_name"]
-}
+# Define key policy areas/topics to analyze.
+# You can expand or modify this list based on what's important in your manuals.
+KEY_POLICY_AREAS = [
+    "Company Values and Culture",
+    "Working Hours and Attendance",
+    "Sick Leave Policy",
+    "Vacation Policy",
+    "Public Holidays",
+    "Compensation and Payroll",
+    "Benefits (Health, Retirement, etc.)",
+    "Code of Conduct and Ethics",
+    "Anti-Discrimination and Equal Opportunity",
+    "Data Privacy and Confidentiality",
+    "Use of Company Property",
+    "Performance Reviews and Management",
+    "Disciplinary Procedures",
+    "Grievance and Complaint Procedures",
+    "Termination and Resignation Procedures",
+    "Employee Feedback Mechanisms",
+    "Training and Development",
+    "Safety and Health Policy"
+]
 
-# --- INITIALIZATION ---
+# --- Initialization ---
 print(f"Initializing LLM with Ollama model: {OLLAMA_LLM_MODEL}")
-llm = Ollama(model=OLLAMA_LLM_MODEL, temperature=0)
+llm = Ollama(model=OLLAMA_LLM_MODEL, temperature=0.1)
 
 print(f"Initializing Embeddings with Ollama model: {OLLAMA_EMBEDDING_MODEL}")
-embeddings = OllamaEmbeddings(model=OLLAMA_EMBEDDING_MODEL)
+embeddings = OllamaEmbeddings(model=OLLAMA_EMBEDDING_MODEL) 
+# Ollama kinda goated because we can do the embeddings right here :)
 
-# -- FUNCTIONS --
+# --- Functions ---
 
 def load_documents(directory_path, filename=None):
-    #Loads documents from a given directory or a specific file
+    # Loads documents from a given directory or a specific file
     documents = []
     if filename:
         filepath = os.path.join(directory_path, filename)
@@ -61,31 +74,42 @@ def load_documents(directory_path, filename=None):
 
         print(f"Loading {filename}...")
         docs = loader.load()
-        for doc in docs:
-            doc.metadata["source"] = filename # Add original filename as metadata
+        for i, doc in enumerate(docs):
+            # Add original filename and page number (if applicable) as metadata
+            doc.metadata["source"] = filename
+            if 'page' in doc.metadata: # PyPDFLoader adds 'page'
+                doc.metadata["original_page"] = doc.metadata['page']
+            else: # For txt/docx, we might simulate page numbers or just note the chunk number
+                doc.metadata["original_page"] = f"chunk_{i+1}" # Simple chunk indicator
         documents.extend(docs)
-    else:
+    else: # Load all documents in a directory
         for filename_in_dir in os.listdir(directory_path):
             filepath = os.path.join(directory_path, filename_in_dir)
-            if filename_in_dir.endswith(".pdf"):
-                loader = PyPDFLoader(filepath)
-            elif filename_in_dir.endswith(".docx"):
-                loader = Docx2txtLoader(filepath)
-            elif filename_in_dir.endswith(".txt"):
-                loader = TextLoader(filepath)
+            if filename_in_dir.endswith((".pdf", ".docx", ".txt")):
+                loader = None
+                if filename_in_dir.endswith(".pdf"):
+                    loader = PyPDFLoader(filepath)
+                elif filename_in_dir.endswith(".docx"):
+                    loader = Docx2txtLoader(filepath)
+                elif filename_in_dir.endswith(".txt"):
+                    loader = TextLoader(filepath)
+                
+                if loader:
+                    print(f"Loading {filename_in_dir}...")
+                    docs = loader.load()
+                    for i, doc in enumerate(docs):
+                        doc.metadata["source"] = filename_in_dir
+                        if 'page' in doc.metadata:
+                            doc.metadata["original_page"] = doc.metadata['page']
+                        else:
+                            doc.metadata["original_page"] = f"chunk_{i+1}"
+                    documents.extend(docs)
             else:
                 print(f"Skipping unsupported file type: {filename_in_dir}")
-                continue
-            print(f"Loading {filename_in_dir}...")
-            docs = loader.load()
-            for doc in docs:
-                doc.metadata["source"] = filename_in_dir
-            documents.extend(docs)
     return documents
 
-
 def split_documents(documents, chunk_size=1000, chunk_overlap=200):
-    #Splits large documents into smaller chunks for LLM processing
+    # Splits large documents into smaller chunks for LLM processing
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
@@ -94,54 +118,152 @@ def split_documents(documents, chunk_size=1000, chunk_overlap=200):
     return text_splitter.split_documents(documents)
 
 def create_vector_store(chunks, embeddings_model):
-    #Creates a FAISS vector store from document chunks and embeddings
+    """Creates a FAISS vector store from document chunks and embeddings."""
     print("Creating vector store...")
     return FAISS.from_documents(chunks, embeddings_model)
 
-def compare_documents_semantic(doc1_content, doc2_content, llm_model, embeddings_model, top_k=3):
-    # Compares two document contents semantically by finding similar chunks
-    # and asking the LLM to identify similarities/differences
-    print("\nPerforming semantic comparison...")
-    # Ensure doc1_content and doc2_content are treated as LangChain Document objects
-    # for consistent processing by split_documents
-    doc1_chunks = split_documents([Document(page_content=doc1_content)])
-    doc2_chunks = split_documents([Document(page_content=doc2_content)])
+def compile_and_compare_policy_area(
+    policy_area,
+    manual_vector_stores_dict, # Dictionary mapping manual name to its vector store
+    llm_model,
+    top_k=5 # Retrieve top 5 relevant chunks from each manual for this policy area
+):
+    """
+    Compiles information for a given policy area across multiple manuals
+    and highlights contradictions or significant changes.
+    """
+    print(f"\n--- Analyzing Policy Area: '{policy_area}' ---")
+    relevant_chunks_for_llm = []
 
-    vectorstore1 = create_vector_store(doc1_chunks, embeddings_model)
-    vectorstore2 = create_vector_store(doc2_chunks, embeddings_model)
+    for manual_name, vector_store in manual_vector_stores_dict.items():
+        # Retrieve chunks relevant to the policy area from each manual's vector store
+        retrieved_docs = vector_store.similarity_search(policy_area, k=top_k)
+        if retrieved_docs:
+            print(f"  Retrieved {len(retrieved_docs)} chunks from {manual_name}")
+            for doc in retrieved_docs:
+                # Format each retrieved chunk with its source manual and (simulated) page/chunk info
+                relevant_chunks_for_llm.append(
+                    f"--- Source: {manual_name}, Page/Chunk: {doc.metadata.get('original_page', 'N/A')} ---\n"
+                    f"{doc.page_content}\n"
+                )
+        else:
+            print(f"  No relevant chunks found in {manual_name} for '{policy_area}'.")
 
-    similarities = []
-    for chunk1 in doc1_chunks:
-        # Retrieve semantically similar chunks from doc2's vector store
-        retrieved_chunks = vectorstore2.similarity_search(chunk1.page_content, k=top_k)
-        for chunk2 in retrieved_chunks:
-            prompt = f"""
-            Compare the following two text excerpts and identify their key similarities and differences.
-            Excerpt 1: "{chunk1.page_content}"
-            Excerpt 2: "{chunk2.page_content}"
-            """
-            response = llm_model.invoke(prompt)
-            similarities.append({
-                "doc1_chunk": chunk1.page_content,
-                "doc2_chunk": chunk2.page_content,
-                "comparison_summary": response
-            })
-    return similarities
+    if not relevant_chunks_for_llm:
+        return f"No information found for '{policy_area}' across any of the manuals."
 
-def summarize_documents(documents, llm_model, summary_type="stuff"):
-    #Summarizes a list of LangChain Document objects
-    print(f"\nSummarizing documents with '{summary_type}' chain...")
-    chain = load_summarize_chain(llm_model, chain_type=summary_type)
-    # The invoke method of summarization chain expects a list of Document objects
-    summary = chain.invoke(documents)
-    return summary['output_text'] # Access the summary text
+    context_text = "\n\n".join(relevant_chunks_for_llm)
 
-def extract_information(document_content, llm_model, schema):
-    #Extracts structured information from document content based on a schema
-    print("\nExtracting information...")
-    chain = create_extraction_chain(schema, llm_model)
-    # Ensure document_content is a string for the extraction chain's invoke method
-    if isinstance(document_content, Document):
-        document_content = document_content.page_content
-    extracted_data = chain.invoke({"input": document_content}) # Pass content as dictionary for extraction chain
-    return extracted_data['text'] # The extraction chain usually returns a dict with a 'text' key
+    prompt = f"""
+    You are an expert HR policy analyst. Your task is to review excerpts from different versions
+    of Ropsa's employee manuals concerning the policy area: "{policy_area}".
+
+    **Instructions:**
+    1.  **Synthesize all consistent information** regarding "{policy_area}" from the provided excerpts. Present this as the general policy.
+    2.  **Identify and list any contradictions or significant changes** in policy details or wording between the different manual versions for "{policy_area}".
+    3.  For each contradiction or change, **explicitly quote the relevant text from each conflicting manual version** and clearly state the source manual (e.g., 'employee_manual_v1_old_old.txt', 'employee_manual_v2_old.txt', 'employee_manual_v3_newest.txt'). Present these instances one after the other.
+    4.  If there are no contradictions and the information is consistent, simply state the synthesized policy.
+
+    **Policy Area to Analyze:** {policy_area}
+
+    **Excerpts from Employee Manuals:**
+    ---
+    {context_text}
+    ---
+
+    **Your Compiled Information and Analysis (Start with Overall Policy, then list contradictions):**
+    """
+
+    try:
+        response = llm_model.invoke(prompt)
+        return response
+    except Exception as e:
+        return f"Error processing '{policy_area}': {e}"
+
+
+# --- Main Program Logic ---
+if __name__ == "__main__":
+    # Create dummy documents for demonstration if they don't exist
+    # Ensure the directory exists
+    if not os.path.exists(DOCUMENT_LIBRARY_PATH):
+        os.makedirs(DOCUMENT_LIBRARY_PATH)
+        print(f"Created directory: {DOCUMENT_LIBRARY_PATH}")
+
+    # Create dummy manuals if they don't exist
+    dummy_manuals_content = {
+        MANUAL_OLD_OLD_NAME: """
+        Employee Manual V1 (Old Old) - ROPSSA
+        1. Working Hours: Standard working hours are 9 AM to 5 PM, Monday to Friday. Lunch break is 30 minutes.
+        2. Sick Leave: Employees accrue 1 day of sick leave per month, up to 10 days per year. No carryover. Doctor's note required after 2 days.
+        3. Vacation: 10 days per year for all employees, after 1 year of service. Max 5 days carryover.
+        4. Code of Conduct: Employees are expected to be professional. No specific anti-discrimination clause.
+        5. Termination: 2 weeks notice for voluntary resignation. Company gives 2 weeks notice for termination.
+        6. Data Privacy: Employee data is kept confidential internally.
+        """,
+        MANUAL_OLD_NAME: """
+        Employee Manual V2 (Old) - ROPSSA
+        1. Working Hours: Standard working hours are 9 AM to 5 PM, Monday to Friday. Lunch break is 1 hour.
+        2. Sick Leave: Employees accrue 1.25 days of sick leave per month, up to 15 days per year. Max 5 days carryover. Doctor's note required for any absence.
+        3. Vacation: 15 days per year for all employees, from start date. Max 5 days carryover. Requests require 2 weeks notice.
+        4. Code of Conduct: Ropsa is committed to a harassment-free workplace. All employees must adhere to professional conduct. No explicit anti-discrimination.
+        5. Termination: 2 weeks notice for voluntary resignation. Company gives 4 weeks notice for termination.
+        6. Data Privacy: All employee personal data is handled according to internal Ropsa guidelines. Data may be shared with third-party service providers for payroll purposes only.
+        """,
+        MANUAL_NEWEST_NAME: """
+        Employee Manual V3 (Newest) - ROPSSA
+        1. Working Hours: Flexible working hours 8 AM to 6 PM, core hours 10 AM to 3 PM. Lunch break is 1 hour, unpaid.
+        2. Sick Leave: Employees accrue 1.5 days of sick leave per month, up to 18 days per year. Max 10 days carryover. No doctor's note needed for first 3 consecutive days of absence.
+        3. Vacation: 20 days per year for all employees, from start date. Max 10 days carryover. Requests require 4 weeks notice.
+        4. Code of Conduct: Ropsa strictly prohibits discrimination based on age, gender, race, religion, sexual orientation, or disability. All employees are expected to maintain the highest level of professionalism and respect.
+        5. Termination: 4 weeks notice required for both voluntary resignation and company-initiated termination.
+        6. Data Privacy: Ropsa processes employee personal data in compliance with GDPR principles, ensuring data minimization, security, and consent. Employees have the right to access and rectify their data. Data is only shared with authorized third parties strictly for operational necessities and with clear consent.
+        """
+    }
+
+    # Write dummy content to files if they don't exist
+    for filename, content in dummy_manuals_content.items():
+        filepath = os.path.join(DOCUMENT_LIBRARY_PATH, filename)
+        if not os.path.exists(filepath):
+            with open(filepath, "w") as f:
+                f.write(content.strip())
+            print(f"Created dummy file: {filepath}")
+
+    # 1. Load and Process Manuals
+    manual_OO_docs = load_documents(DOCUMENT_LIBRARY_PATH, MANUAL_OLD_OLD_NAME)
+    manual_O_docs = load_documents(DOCUMENT_LIBRARY_PATH, MANUAL_OLD_NAME)
+    manual_N_docs = load_documents(DOCUMENT_LIBRARY_PATH, MANUAL_NEWEST_NAME)
+
+    if not manual_OO_docs or not manual_O_docs or not manual_N_docs:
+        print("Error: One or more employee manuals not found or empty. Please check paths and content. Exiting.")
+        exit()
+
+    # Split documents into chunks for vector store creation
+    manual_OO_chunks = split_documents(manual_OO_docs, chunk_size=500, chunk_overlap=100)
+    manual_O_chunks = split_documents(manual_O_docs, chunk_size=500, chunk_overlap=100)
+    manual_N_chunks = split_documents(manual_N_docs, chunk_size=500, chunk_overlap=100)
+
+    # Create individual vector stores for each manual for targeted retrieval
+    manual_vector_stores = {
+        MANUAL_OLD_OLD_NAME: create_vector_store(manual_OO_chunks, embeddings),
+        MANUAL_OLD_NAME: create_vector_store(manual_O_chunks, embeddings),
+        MANUAL_NEWEST_NAME: create_vector_store(manual_N_chunks, embeddings)
+    }
+    print("\nAll manuals loaded and individual vector stores created.")
+
+    # --- Main Compilation and Contradiction Detection ---
+    compiled_report_by_topic = {}
+    print("\n--- Starting Compilation and Contradiction Detection ---")
+
+    for topic in KEY_POLICY_AREAS:
+        # Pass the dictionary of vector stores to the compilation function
+        compiled_info = compile_and_compare_policy_area(topic, manual_vector_stores, llm)
+        compiled_report_by_topic[topic] = compiled_info
+        print(f"\n{'='*20} End of Analysis for '{topic}' {'='*20}\n") # Separator
+
+    print("\n--- Full Compiled Report ---")
+    for topic, info in compiled_report_by_topic.items():
+        print(f"\n### Policy Area: {topic}\n")
+        print(info)
+        print("\n--------------------------------------------------")
+
+    print("\nProgram Finished.")
