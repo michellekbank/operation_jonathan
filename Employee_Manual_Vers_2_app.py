@@ -1,20 +1,25 @@
+# CHANGES FROM VERSION 1
+# 1. Imported real employee manuals and deleted dummy manual stuff
+# 2. LangChain is updating Ollama package in the near future, so I changed it to OllamaLLM instead of just Ollama. We should use this package moving forward
+#
+
 import os
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.llms import Ollama
+from langchain_ollama import OllamaLLM
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.docstore.document import Document # Import Document class explicitly
 import json # To pretty print extracted schema data
 
 # --- Configuration ---
-DOCUMENT_LIBRARY_PATH = "./dummy_manuals" # Create a folder named 'dummy_manuals' for your documents
+DOCUMENT_LIBRARY_PATH = "./employee_manuals"
 
 # Names of your three employee manuals
-# MAKE SURE THESE FILENAMES MATCH YOUR ACTUAL FILES IN THE 'dummy_manuals' FOLDER
-MANUAL_OLD_OLD_NAME = "employee_manual_v1_old_old.txt" # The oldest version
-MANUAL_OLD_NAME = "employee_manual_v2_old.txt"      # The middle version
-MANUAL_NEWEST_NAME = "employee_manual_v3_newest.txt" # The newest version
+# MAKE SURE THESE FILENAMES MATCH YOUR ACTUAL FILES IN THE 'employee_manuals' FOLDER
+MANUAL_OLD_OLD_NAME = "Employee_Manual_2013.pdf" # The oldest version
+MANUAL_OLD_NAME = "Employee_Manual_2018.docx"      # The middle version
+MANUAL_NEWEST_NAME = "Employee_Manual_2023.pdf" # The newest version
 
 # --- Ollama Model Configuration ---
 OLLAMA_LLM_MODEL = "gemma3:latest"
@@ -23,30 +28,11 @@ OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
 
 # Define key policy areas/topics to analyze.
 # You can expand or modify this list based on what's important in your manuals.
-KEY_POLICY_AREAS = [
-    "Company Values and Culture",
-    "Working Hours and Attendance",
-    "Sick Leave Policy",
-    "Vacation Policy",
-    "Public Holidays",
-    "Compensation and Payroll",
-    "Benefits (Health, Retirement, etc.)",
-    "Code of Conduct and Ethics",
-    "Anti-Discrimination and Equal Opportunity",
-    "Data Privacy and Confidentiality",
-    "Use of Company Property",
-    "Performance Reviews and Management",
-    "Disciplinary Procedures",
-    "Grievance and Complaint Procedures",
-    "Termination and Resignation Procedures",
-    "Employee Feedback Mechanisms",
-    "Training and Development",
-    "Safety and Health Policy"
-]
+KEY_POLICY_AREAS = [ "Introduction"]
 
 # --- Initialization ---
 print(f"Initializing LLM with Ollama model: {OLLAMA_LLM_MODEL}")
-llm = Ollama(model=OLLAMA_LLM_MODEL, temperature=0.1)
+llm = OllamaLLM(model=OLLAMA_LLM_MODEL, temperature=0.1)
 
 print(f"Initializing Embeddings with Ollama model: {OLLAMA_EMBEDDING_MODEL}")
 embeddings = OllamaEmbeddings(model=OLLAMA_EMBEDDING_MODEL) 
@@ -207,48 +193,6 @@ def compile_and_compare_policy_area(policy_area, manual_vector_stores_dict, # Di
 
 
 # --- Main Program Logic ---
-    
-# -- Helper Functions for Main --
-    
-def create_dummies():
-    # Create dummy manuals if they don't exist
-    dummy_manuals_content = {
-        MANUAL_OLD_OLD_NAME: """
-        Employee Manual V1 (Old Old) - ROPSSA
-        1. Working Hours: Standard working hours are 9 AM to 5 PM, Monday to Friday. Lunch break is 30 minutes.
-        2. Sick Leave: Employees accrue 1 day of sick leave per month, up to 10 days per year. No carryover. Doctor's note required after 2 days.
-        3. Vacation: 10 days per year for all employees, after 1 year of service. Max 5 days carryover.
-        4. Code of Conduct: Employees are expected to be professional. No specific anti-discrimination clause.
-        5. Termination: 2 weeks notice for voluntary resignation. Company gives 2 weeks notice for termination.
-        6. Data Privacy: Employee data is kept confidential internally.
-        """,
-        MANUAL_OLD_NAME: """
-        Employee Manual V2 (Old) - ROPSSA
-        1. Working Hours: Standard working hours are 9 AM to 5 PM, Monday to Friday. Lunch break is 1 hour.
-        2. Sick Leave: Employees accrue 1.25 days of sick leave per month, up to 15 days per year. Max 5 days carryover. Doctor's note required for any absence.
-        3. Vacation: 15 days per year for all employees, from start date. Max 5 days carryover. Requests require 2 weeks notice.
-        4. Code of Conduct: Ropsa is committed to a harassment-free workplace. All employees must adhere to professional conduct. No explicit anti-discrimination.
-        5. Termination: 2 weeks notice for voluntary resignation. Company gives 4 weeks notice for termination.
-        6. Data Privacy: All employee personal data is handled according to internal Ropsa guidelines. Data may be shared with third-party service providers for payroll purposes only.
-        """,
-        MANUAL_NEWEST_NAME: """
-        Employee Manual V3 (Newest) - ROPSSA
-        1. Working Hours: Flexible working hours 8 AM to 6 PM, core hours 10 AM to 3 PM. Lunch break is 1 hour, unpaid.
-        2. Sick Leave: Employees accrue 1.5 days of sick leave per month, up to 18 days per year. Max 10 days carryover. No doctor's note needed for first 3 consecutive days of absence.
-        3. Vacation: 20 days per year for all employees, from start date. Max 10 days carryover. Requests require 4 weeks notice.
-        4. Code of Conduct: Ropsa strictly prohibits discrimination based on age, gender, race, religion, sexual orientation, or disability. All employees are expected to maintain the highest level of professionalism and respect.
-        5. Termination: 4 weeks notice required for both voluntary resignation and company-initiated termination.
-        6. Data Privacy: Ropsa processes employee personal data in compliance with GDPR principles, ensuring data minimization, security, and consent. Employees have the right to access and rectify their data. Data is only shared with authorized third parties strictly for operational necessities and with clear consent.
-        """
-    }
-
-    # Write dummy content to files if they don't exist
-    for filename, content in dummy_manuals_content.items():
-        filepath = os.path.join(DOCUMENT_LIBRARY_PATH, filename)
-        if not os.path.exists(filepath):
-            with open(filepath, "w") as f:
-                f.write(content.strip())
-            print(f"Created dummy file: {filepath}")
 
 
 if __name__ == "__main__":
@@ -256,10 +200,6 @@ if __name__ == "__main__":
     if not os.path.exists(DOCUMENT_LIBRARY_PATH):
         os.makedirs(DOCUMENT_LIBRARY_PATH)
         print(f"Created directory: {DOCUMENT_LIBRARY_PATH}")
-
-    # Create dummy documents for demonstration if they don't exist (essentially this is just to make sure we don't run huge errors if the files aren't there lemme protect my comptuer)
-
-    create_dummies()
 
     # Load and Process Manuals
     manual_OO_docs = load_documents(DOCUMENT_LIBRARY_PATH, MANUAL_OLD_OLD_NAME)
