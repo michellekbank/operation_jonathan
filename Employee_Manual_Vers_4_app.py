@@ -1,9 +1,6 @@
-# CHANGES FROM VERSION 2
-# 1. Organizationally, it would be better for the app to give information about section numbers. Changed the recursive text splitter to recognize this.
-# 2. Timestamps added to pdf generation so new files will be created each time
-# 3. Increased chunk size to 800. top_k value of more than 5 results in problems...
-# 4. Refined the prompt to get a result we wanted
-# 5. Reduced the temperature (make it less creative)
+# CHANGES FROM VERSION 3
+# 1. Reduced the temperature (make it less creative)
+# 2. Delete the oldest manual
 
 import os
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
@@ -19,9 +16,8 @@ from datetime import datetime
 # --- Configuration ---
 DOCUMENT_LIBRARY_PATH = "./employee_manuals"
 
-# Names of your three employee manuals
+# Names of your two employee manuals
 # MAKE SURE THESE FILENAMES MATCH YOUR ACTUAL FILES IN THE 'employee_manuals' FOLDER
-MANUAL_OLD_OLD_NAME = "Employee_Manual_2013.pdf" # The oldest version
 MANUAL_OLD_NAME = "Employee_Manual_2018.docx"      # The middle version
 MANUAL_NEWEST_NAME = "Employee_Manual_2023.pdf" # The newest version
 
@@ -32,12 +28,15 @@ OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
 
 # Define key policy areas/topics to analyze.
 # You can expand or modify this list based on what's important in your manuals.
-KEY_POLICY_AREAS = ["7. Employment",
-   "8. Probationary Period and Status"]
+KEY_POLICY_AREAS = ["7.1 Hiring of employees",
+   "8.1 Probationary Period New Hire", "8.2 Probationary Period Promotion", 
+    "8.3 Evaluation in probationary period", "8.4 Dismissal during probationary period",
+     "8.5 probationary period unsatisfactory performance", "8.6 Leave of Absence during probationary period" 
+    , "8.7 removal from probationary period", "8.8 employee benefits"]
 
 # --- Initialization ---
 print(f"Initializing LLM with Ollama model: {OLLAMA_LLM_MODEL}")
-llm = OllamaLLM(model=OLLAMA_LLM_MODEL, temperature=0.1)
+llm = OllamaLLM(model=OLLAMA_LLM_MODEL, temperature=0.0)
 
 print(f"Initializing Embeddings with Ollama model: {OLLAMA_EMBEDDING_MODEL}")
 embeddings = OllamaEmbeddings(model=OLLAMA_EMBEDDING_MODEL) 
@@ -130,15 +129,15 @@ def split_documents(documents, chunk_size, chunk_overlap):
         chunk_overlap=chunk_overlap,
         length_function=len,
         separators=[
-            r"\d+\.\s",          # Regex for 7. (top-level)
-            r"\d+\.\d+\.\s",     # Regex for 7.1. (mid-level)
-            r"\d+\.\d+\.\d+\.\s", # Regex for 7.1.1. (more specific mid-level)
-            r"\d+\.\d+\.\d+\.\d+\.\s" # Regex for 7.1.1.1 (specific)
-            r"\d+\.\d+\.\d+\.\d+\.\d+\.\s" # Regex for 7.1.1.1.1 (most most specific)
-            "\n\n",         # Try to split by double newline (paragraphs)
-            "\n",           # Then single newline (lines)
-            " ",            # Then by space (words)
-            "",             # Fallback to characters
+            r"\d+\.\d+\.\d+\.\d+\.\d+\.\s", # Regex for 7.1.1.1.1 (most most specific)
+            r"\d+\.\d+\.\d+\.\d+\.\s",     # Regex for 7.1.1.1 (specific)
+            r"\d+\.\d+\.\d+\.\s",          # Regex for 7.1.1. (more specific mid-level)
+            r"\d+\.\d+\.\s",               # Regex for 7.1. (mid-level)
+            r"\d+\.\s",                    # Regex for 7. (top-level)
+            "\n\n",                        # Try to split by double newline (paragraphs)
+            "\n",                          # Then single newline (lines)
+            " ",                           # Then by space (words)
+            "",                            # Fallback to characters
         ]
     )
     return text_splitter.split_documents(documents)
@@ -182,36 +181,36 @@ def compile_and_compare_policy_area(policy_area, manual_vector_stores_dict, # Di
     context_text = "\n\n".join(relevant_chunks_for_llm)
 
     prompt = f"""
-    You are an expert HR policy analyst. Your task is to meticulously review and compare excerpts from three different versions
+    You are an expert HR policy analyst. Your task is to meticulously review and compare **ONLY** the provided excerpts from two different versions
     of ROPSSA's employee manuals concerning the policy area: "{policy_area}".
 
-    **Instructions for Analysis and Output:**
+    **Crucial Constraints - READ CAREFULLY:**
+    * **DO NOT ADD ANY NEW INFORMATION, SECTIONS, SUB-SECTIONS, OR HEADINGS that are not explicitly present in the provided "Excerpts from Employee Manuals."**
+    * **ALL INFORMATION, SECTION NUMBERS, AND HEADINGS in your output MUST be directly quoted or clearly derived from the provided excerpts.**
+    * **DO NOT INFER, CONCLUDE, OR GENERATE content based on external knowledge.** Stick strictly to the given text.
 
     ---
     **PART 1: SYNTHESIZED CONSISTENT POLICY**
 
-    1.  **Synthesize and Combine:** Combine all consistent information regarding "{policy_area}" from the provided manuals into a clear, comprehensive policy statement.
-    2.  **Include Section Numbers:** For all synthesized policy details, you **MUST** include the exact section numbers (e.g., "7.1.1. Application") and their corresponding headings/titles as found in the original excerpts. *Ensure you have included information from ALL appropriate section numbers (e.g. 8.1 through 8.9). DO NOT ADD ANY NEW SECTION NUMBERS.*
-    3.  **Prioritize Newest Manual:** Mirror the language and structure of the **2023 manual** when synthesizing consistent information, ensuring section numbers are derived directly from the provided context. Please use exact language from the 2023 manual when there is little contradiction in the semantics between manuals.
+    1.  **Synthesize and Combine:** Combine all consistent information regarding "{policy_area}" **EXCLUSIVELY** from the provided manuals into a clear, comprehensive policy statement.
+    2.  **Include Section Numbers & Headings (Exactly as Found):** For all synthesized policy details, you **MUST** include the exact section numbers (e.g., "7.1.1. Application") and their corresponding headings/titles **as found in the original excerpts**.
+        * **Ensure you include information from ALL appropriate section numbers (e.g., 8.1 through 8.9) that are present in the provided excerpts.**
+        * **DO NOT invent or re-number any sections that are not explicitly in the source text.**
+    3.  **Prioritize Newest Manual Language:** Mirror the language and structure of the **2023 manual** when synthesizing consistent information, ensuring section numbers are derived directly from the provided context. When there is little semantic contradiction, use the exact language from the 2023 manual.
 
     ---
     **PART 2: CONTRADICTIONS AND SIGNIFICANT CHANGES**
 
-    If **ANY** contradictions or significant changes are identified, list them clearly. If there are none, state "No contradictions or significant changes identified for this policy area."
+    If **ANY** contradictions or significant changes are identified **within the provided excerpts**, list them clearly. If there are none, state "No contradictions or significant changes identified for this policy area."
 
-    Be very specific: for EACH contradiction or change, follow this format:
+    For EACH contradiction or change, follow this exact format:
 
     **Contradiction/Change in [Specific Policy Aspect, e.g., 'Vacation Accrual Rate']:**
-    * **[2013 Manual - Section Number & Heading]:** "[Exact Quote from 2013 Manual]"
     * **[2018 Manual - Section Number & Heading]:** "[Exact Quote from 2018 Manual]"
     * **[2023 Manual - Section Number & Heading]:** "[Exact Quote from 2023 Manual]"
-    * **Significance:** [Brief explanation of the change/contradiction and its implications.]
+    * **Significance:** [Brief explanation of the change/contradiction and its implications, **based ONLY on the provided texts**.]
 
     ---
-   **Focus and Relevance:**
-   * Only use information directly relevant to the "{policy_area}" from the provided excerpts. Disregard any information that is clearly outside the scope of this specific policy area.
-   
-     ---
     **Policy Area to Analyze:** {policy_area}
 
     **Excerpts from Employee Manuals (including source, page/chunk, and section context):**
@@ -221,38 +220,6 @@ def compile_and_compare_policy_area(policy_area, manual_vector_stores_dict, # Di
 
     **Your Compiled Information and Analysis (Start with PART 1, then PART 2):**
     """
-    
-    #f"""
-    # You are an expert HR policy analyst. Your task is to meticulously review and compare excerpts from three different versions
-    # of ROPSSA's employee manuals concerning the policy area: "{policy_area}".
-
-    # **Instructions for Analysis and Output:**
-
-    # 1.  **Synthesize Consistent Policy:**
-    #     * Combine all consistent information regarding "{policy_area}" from the three provided manuals.
-    #     * **Crucially, for all synthesized consistent policy, you MUST include the exact section numbers (e.g., "7.1.1. Application") and their corresponding headings/titles from the provided excerpts.**
-    #     * Prioritize mirroring the language and structure of the most recent manual (2023 version) when synthesizing consistent information, while ensuring section numbers are derived from the original context provided.
-
-    # 2.  **Identify Contradictions and Significant Changes:**
-    #     * Thoroughly identify and list any contradictions or significant changes in policy details or wording between the three different manual versions for "{policy_area}".
-    #     * For EACH contradiction or change, you MUST:
-    #         * **Explicitly quote the relevant text from each conflicting manual version.**
-    #         * **Clearly state the source manual (e.g., 'employee_manual_2013.pdf', 'employee_manual_2018.docx', 'employee_manual_2023.pdf').**
-    #         * **Crucially, include the exact section number (e.g., "7.1.1") and its heading that contains the quoted information within each manual.**
-    #         * Present these conflicting instances immediately after each other for easy comparison.
-
-    # 3.  **No Contradictions:**
-    #     * If, after thorough analysis, you find NO contradictions and the information is entirely consistent across all relevant manual versions, simply state the synthesized policy following instruction #1.
-
-    # **Policy Area to Analyze:** {policy_area}
-
-    # **Excerpts from Employee Manuals (including source and section context):**
-    # ---
-    # {context_text}
-    # ---
-
-    # **Your Compiled Information and Analysis (Start with Overall Policy, then list contradictions):**
-    # """
 
     try:
         response = llm_model.invoke(prompt)
@@ -326,24 +293,21 @@ if __name__ == "__main__":
         print(f"Created directory: {DOCUMENT_LIBRARY_PATH}")
 
     # Load and Process Manuals
-    manual_OO_docs = load_documents(DOCUMENT_LIBRARY_PATH, MANUAL_OLD_OLD_NAME)
     manual_O_docs = load_documents(DOCUMENT_LIBRARY_PATH, MANUAL_OLD_NAME)
     manual_N_docs = load_documents(DOCUMENT_LIBRARY_PATH, MANUAL_NEWEST_NAME)
 
-    if not manual_OO_docs or not manual_O_docs or not manual_N_docs:
+    if not manual_O_docs or not manual_N_docs:
         print("Error: One or more employee manuals not found or empty. Please check paths and content. Exiting.")
         exit()
 
     # Split documents into chunks for vector store creation
     chunk_size = 800
     chunk_overlap = 100
-    manual_OO_chunks = split_documents(manual_OO_docs, chunk_size, chunk_overlap)
     manual_O_chunks = split_documents(manual_O_docs, chunk_size, chunk_overlap)
     manual_N_chunks = split_documents(manual_N_docs, chunk_size, chunk_overlap)
 
     # Create individual vector stores for each manual for targeted retrieval
     manual_vector_stores = {
-        MANUAL_OLD_OLD_NAME: create_vector_store(manual_OO_chunks, embeddings),
         MANUAL_OLD_NAME: create_vector_store(manual_O_chunks, embeddings),
         MANUAL_NEWEST_NAME: create_vector_store(manual_N_chunks, embeddings)
     }
@@ -353,7 +317,7 @@ if __name__ == "__main__":
     compiled_report_by_topic = {}
     print("\n--- Starting Compilation and Contradiction Detection ---")
 
-    top_k = 5 # Retrieve top 5 relevant chunks from each manual for this policy area
+    top_k = 2 # Retrieve top 5 relevant chunks from each manual for this policy area
     for topic in KEY_POLICY_AREAS:
         # Pass the dictionary of vector stores to the compilation function
         compiled_info = compile_and_compare_policy_area(topic, manual_vector_stores, llm, top_k)
@@ -366,7 +330,7 @@ if __name__ == "__main__":
         print(info)
         print("\n--------------------------------------------------")
 
-    output_directory = "./output_reports_version_3"
+    output_directory = "./output_reports_version_4"
     os.makedirs(output_directory, exist_ok=True) # Ensure the output directory exists
 
     # Generate a timestamp for unique filenames
