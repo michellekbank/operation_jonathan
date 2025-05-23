@@ -1,0 +1,7 @@
+Employee Manual V2 (Old) - ROPSSA
+        1. Working Hours: Standard working hours are 9 AM to 5 PM, Monday to Friday. Lunch break is 1 hour.
+        2. Sick Leave: Employees accrue 1.25 days of sick leave per month, up to 15 days per year. Max 5 days carryover. Doctor's note required for any absence.
+        3. Vacation: 15 days per year for all employees, from start date. Max 5 days carryover. Requests require 2 weeks notice.
+        4. Code of Conduct: Ropsa is committed to a harassment-free workplace. All employees must adhere to professional conduct. No explicit anti-discrimination.
+        5. Termination: 2 weeks notice for voluntary resignation. Company gives 4 weeks notice for termination.
+        6. Data Privacy: All employee personal data is handled according to internal Ropsa guidelines. Data may be shared with third-party service providers for payroll purposes only.

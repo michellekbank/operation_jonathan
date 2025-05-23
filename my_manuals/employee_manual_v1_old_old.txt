@@ -1,0 +1,7 @@
+Employee Manual V1 (Old Old) - ROPSSA
+        1. Working Hours: Standard working hours are 9 AM to 5 PM, Monday to Friday. Lunch break is 30 minutes.
+        2. Sick Leave: Employees accrue 1 day of sick leave per month, up to 10 days per year. No carryover. Doctor's note required after 2 days.
+        3. Vacation: 10 days per year for all employees, after 1 year of service. Max 5 days carryover.
+        4. Code of Conduct: Employees are expected to be professional. No specific anti-discrimination clause.
+        5. Termination: 2 weeks notice for voluntary resignation. Company gives 2 weeks notice for termination.
+        6. Data Privacy: Employee data is kept confidential internally.

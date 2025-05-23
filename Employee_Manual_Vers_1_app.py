@@ -18,7 +18,8 @@ MANUAL_NEWEST_NAME = "employee_manual_v3_newest.txt" # The newest version
 
 # --- Ollama Model Configuration ---
 OLLAMA_LLM_MODEL = "gemma3:latest"
-OLLAMA_EMBEDDING_MODEL = "gemma3:latest"
+# dedicated embedding model that supports embeddings
+OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
 
 # Define key policy areas/topics to analyze.
 # You can expand or modify this list based on what's important in your manuals.
@@ -53,37 +54,52 @@ embeddings = OllamaEmbeddings(model=OLLAMA_EMBEDDING_MODEL)
 
 # --- Functions ---
 
-def load_documents(directory_path, filename=None):
-    # Loads documents from a given directory or a specific file
-    documents = []
-    if filename:
-        filepath = os.path.join(directory_path, filename)
-        if not os.path.exists(filepath):
-            print(f"File not found: {filepath}")
-            return []
 
-        if filepath.endswith(".pdf"):
-            loader = PyPDFLoader(filepath)
-        elif filepath.endswith(".docx"):
-            loader = Docx2txtLoader(filepath)
-        elif filepath.endswith(".txt"):
-            loader = TextLoader(filepath)
-        else:
-            print(f"Skipping unsupported file type: {filename}")
-            return []
+# -- Helper functions for load_document --
 
-        print(f"Loading {filename}...")
-        docs = loader.load()
-        for i, doc in enumerate(docs):
-            # Add original filename and page number (if applicable) as metadata
-            doc.metadata["source"] = filename
-            if 'page' in doc.metadata: # PyPDFLoader adds 'page'
-                doc.metadata["original_page"] = doc.metadata['page']
-            else: # For txt/docx, we might simulate page numbers or just note the chunk number
-                doc.metadata["original_page"] = f"chunk_{i+1}" # Simple chunk indicator
-        documents.extend(docs)
-    else: # Load all documents in a directory
-        for filename_in_dir in os.listdir(directory_path):
+# given a Document object list, we add in useful metadata
+def add_metadata(docs, filename):
+    for i, doc in enumerate(docs):
+        # Add original filename and page number (if applicable) as metadata
+        doc.metadata["source"] = filename
+        if 'page' in doc.metadata: # PyPDFLoader adds 'page'
+            doc.metadata["original_page"] = doc.metadata['page']
+        else: # For txt/docx, we might simulate page numbers or just note the chunk number
+            doc.metadata["original_page"] = f"chunk_{i+1}" # Simple chunk indicator
+
+
+# Loads the given file if one is provided, modifying the "documents" list to
+# include information from the given file
+def load_filename(documents, directory_path, filename):
+    filepath = os.path.join(directory_path, filename)
+
+    if not os.path.exists(filepath):
+        print(f"File not found: {filepath}")
+        return []
+
+    # gives us a LangChain loader corresponding with whatever filetype the document is
+    if filepath.endswith(".pdf"):
+        loader = PyPDFLoader(filepath) 
+    elif filepath.endswith(".docx"):
+        loader = Docx2txtLoader(filepath)
+    elif filepath.endswith(".txt"):
+        loader = TextLoader(filepath)
+    else:
+        print(f"Skipping unsupported file type: {filename}")
+        return []
+    
+    # reads the content from the document and puts it in a LangChain Document object list
+    print(f"Loading {filename}...")
+    docs = loader.load()
+    add_metadata(docs, filename)
+    documents.extend(docs)
+
+# in the case that no file is provided to load_documents, we simply load all of 
+#    the files in the directory
+
+def load_directory(documents, directory_path):
+    # loops through the files in the directory path and loads them 
+    for filename_in_dir in os.listdir(directory_path):
             filepath = os.path.join(directory_path, filename_in_dir)
             if filename_in_dir.endswith((".pdf", ".docx", ".txt")):
                 loader = None
@@ -97,17 +113,25 @@ def load_documents(directory_path, filename=None):
                 if loader:
                     print(f"Loading {filename_in_dir}...")
                     docs = loader.load()
-                    for i, doc in enumerate(docs):
-                        doc.metadata["source"] = filename_in_dir
-                        if 'page' in doc.metadata:
-                            doc.metadata["original_page"] = doc.metadata['page']
-                        else:
-                            doc.metadata["original_page"] = f"chunk_{i+1}"
+                    add_metadata(docs, filename_in_dir)
                     documents.extend(docs)
             else:
                 print(f"Skipping unsupported file type: {filename_in_dir}")
+
+# -- load_documents --
+#  Loads documents from a given directory or a specific file
+def load_documents(directory_path, filename=None):
+    documents = []
+    if filename:
+        load_filename(documents, directory_path, filename)
+    else: # Load all documents in a directory
+        load_directory(documents, directory_path)
     return documents
 
+# -- split_documents --
+#   uses a recursive character text splitter to take the documents and split 
+#   them in a way that preserves semantics. This ensures that it can be processed
+#   by the llm
 def split_documents(documents, chunk_size=1000, chunk_overlap=200):
     # Splits large documents into smaller chunks for LLM processing
     text_splitter = RecursiveCharacterTextSplitter(
@@ -117,24 +141,16 @@ def split_documents(documents, chunk_size=1000, chunk_overlap=200):
     )
     return text_splitter.split_documents(documents)
 
+# -- create_vector_store
+# Creates a FAISS vector store from document chunks and embeddings :)
 def create_vector_store(chunks, embeddings_model):
-    """Creates a FAISS vector store from document chunks and embeddings."""
     print("Creating vector store...")
     return FAISS.from_documents(chunks, embeddings_model)
 
-def compile_and_compare_policy_area(
-    policy_area,
-    manual_vector_stores_dict, # Dictionary mapping manual name to its vector store
-    llm_model,
-    top_k=5 # Retrieve top 5 relevant chunks from each manual for this policy area
-):
-    """
-    Compiles information for a given policy area across multiple manuals
-    and highlights contradictions or significant changes.
-    """
-    print(f"\n--- Analyzing Policy Area: '{policy_area}' ---")
-    relevant_chunks_for_llm = []
+# -- Helper functions for compile_and_compare_policy_area --
 
+# Retrieve chunks relevant to the policy area from each manual's vector store
+def chunk_retrieval(relevant_chunks_for_llm, manual_vector_stores_dict, policy_area, top_k):
     for manual_name, vector_store in manual_vector_stores_dict.items():
         # Retrieve chunks relevant to the policy area from each manual's vector store
         retrieved_docs = vector_store.similarity_search(policy_area, k=top_k)
@@ -148,6 +164,16 @@ def compile_and_compare_policy_area(
                 )
         else:
             print(f"  No relevant chunks found in {manual_name} for '{policy_area}'.")
+
+# -- compile_and_compare_policy_area --
+#      Compiles information for a given policy area across multiple manuals 
+#      and highlights contradictions or significant changes.
+def compile_and_compare_policy_area( policy_area, manual_vector_stores_dict, # Dictionary that maps manual name to its vector store
+    llm_model, top_k):
+    print(f"\n--- Analyzing Policy Area: '{policy_area}' ---")
+    relevant_chunks_for_llm = []
+
+    chunk_retrieval(relevant_chunks_for_llm, manual_vector_stores_dict, policy_area, top_k)
 
     if not relevant_chunks_for_llm:
         return f"No information found for '{policy_area}' across any of the manuals."
@@ -182,13 +208,10 @@ def compile_and_compare_policy_area(
 
 
 # --- Main Program Logic ---
-if __name__ == "__main__":
-    # Create dummy documents for demonstration if they don't exist
-    # Ensure the directory exists
-    if not os.path.exists(DOCUMENT_LIBRARY_PATH):
-        os.makedirs(DOCUMENT_LIBRARY_PATH)
-        print(f"Created directory: {DOCUMENT_LIBRARY_PATH}")
-
+    
+# -- Helper Functions for Main --
+    
+def create_dummies():
     # Create dummy manuals if they don't exist
     dummy_manuals_content = {
         MANUAL_OLD_OLD_NAME: """
@@ -228,7 +251,18 @@ if __name__ == "__main__":
                 f.write(content.strip())
             print(f"Created dummy file: {filepath}")
 
-    # 1. Load and Process Manuals
+
+if __name__ == "__main__":
+    # Ensure the directory exists
+    if not os.path.exists(DOCUMENT_LIBRARY_PATH):
+        os.makedirs(DOCUMENT_LIBRARY_PATH)
+        print(f"Created directory: {DOCUMENT_LIBRARY_PATH}")
+
+    # Create dummy documents for demonstration if they don't exist (essentially this is just to make sure we don't run huge errors if the files aren't there lemme protect my comptuer)
+
+    create_dummies()
+
+    # Load and Process Manuals
     manual_OO_docs = load_documents(DOCUMENT_LIBRARY_PATH, MANUAL_OLD_OLD_NAME)
     manual_O_docs = load_documents(DOCUMENT_LIBRARY_PATH, MANUAL_OLD_NAME)
     manual_N_docs = load_documents(DOCUMENT_LIBRARY_PATH, MANUAL_NEWEST_NAME)
@@ -254,11 +288,12 @@ if __name__ == "__main__":
     compiled_report_by_topic = {}
     print("\n--- Starting Compilation and Contradiction Detection ---")
 
+    top_k = 5 # Retrieve top 5 relevant chunks from each manual for this policy area
     for topic in KEY_POLICY_AREAS:
         # Pass the dictionary of vector stores to the compilation function
-        compiled_info = compile_and_compare_policy_area(topic, manual_vector_stores, llm)
+        compiled_info = compile_and_compare_policy_area(topic, manual_vector_stores, llm, top_k)
         compiled_report_by_topic[topic] = compiled_info
-        print(f"\n{'='*20} End of Analysis for '{topic}' {'='*20}\n") # Separator
+        print(f"\n{'='*20} End of Analysis for '{topic}' {'='*20}\n")
 
     print("\n--- Full Compiled Report ---")
     for topic, info in compiled_report_by_topic.items():
