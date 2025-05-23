@@ -1,7 +1,7 @@
 # CHANGES FROM VERSION 1
 # 1. Imported real employee manuals and deleted dummy manual stuff
 # 2. LangChain is updating Ollama package in the near future, so I changed it to OllamaLLM instead of just Ollama. We should use this package moving forward
-#
+# 3. Now saves outputs to a folder in the project
 
 import os
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
@@ -11,6 +11,7 @@ from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.docstore.document import Document # Import Document class explicitly
 import json # To pretty print extracted schema data
+from fpdf import FPDF
 
 # --- Configuration ---
 DOCUMENT_LIBRARY_PATH = "./employee_manuals"
@@ -28,7 +29,7 @@ OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
 
 # Define key policy areas/topics to analyze.
 # You can expand or modify this list based on what's important in your manuals.
-KEY_POLICY_AREAS = [ "Introduction"]
+KEY_POLICY_AREAS = ["7. Employment"]
 
 # --- Initialization ---
 print(f"Initializing LLM with Ollama model: {OLLAMA_LLM_MODEL}")
@@ -167,12 +168,12 @@ def compile_and_compare_policy_area(policy_area, manual_vector_stores_dict, # Di
 
     prompt = f"""
     You are an expert HR policy analyst. Your task is to review excerpts from different versions
-    of Ropsa's employee manuals concerning the policy area: "{policy_area}".
+    of ROPSSA's employee manuals concerning the policy area: "{policy_area}".
 
     **Instructions:**
     1.  **Synthesize all consistent information** regarding "{policy_area}" from the provided excerpts. Present this as the general policy.
     2.  **Identify and list any contradictions or significant changes** in policy details or wording between the different manual versions for "{policy_area}".
-    3.  For each contradiction or change, **explicitly quote the relevant text from each conflicting manual version** and clearly state the source manual (e.g., 'employee_manual_v1_old_old.txt', 'employee_manual_v2_old.txt', 'employee_manual_v3_newest.txt'). Present these instances one after the other.
+    3.  For each contradiction or change, **explicitly quote the relevant text from each conflicting manual version** and clearly state the source manual (e.g., 'employee_manual_2013.pdf', 'employee_manual_2018.docx', 'employee_manual_2023.pdf'). Present these instances one after the other.
     4.  If there are no contradictions and the information is consistent, simply state the synthesized policy.
 
     **Policy Area to Analyze:** {policy_area}
@@ -184,12 +185,90 @@ def compile_and_compare_policy_area(policy_area, manual_vector_stores_dict, # Di
 
     **Your Compiled Information and Analysis (Start with Overall Policy, then list contradictions):**
     """
+#    f"""
+#     You are an expert HR policy analyst. Your task is to review excerpts from two different versions of the Republic of Palau Social Security Administration’s (ROPSSA) employee manuals concerning the policy area: "{policy_area}".
+
+
+#    **Instructions:**
+#    1.  **Synthesize all consistent information** regarding "{policy_area}" from the provided excerpts. Present this as the general policy.
+#    2.  **Identify and list any contradictions or significant changes** in policy details or wording between the different manual versions for "{policy_area}".
+#    3.  For each contradiction or change, **explicitly quote the relevant text from each conflicting manual version** and clearly state the source manual (e.g., 'employee_manual_v2_old.txt', 'employee_manual_v3_newest.txt'). Present these instances one after the other.
+#    4.  If there are no contradictions and the information is consistent, simply state the synthesized policy.
+
+
+#    **Policy Area to Analyze:** {policy_area}
+
+
+#    **Excerpts from Employee Manuals:**
+#    ---
+#    {context_text}
+#    ---
+
+
+#    **Your Compiled Information and Analysis (Start with Overall Policy, then list contradictions):**
+#    """
+
 
     try:
         response = llm_model.invoke(prompt)
         return response
     except Exception as e:
         return f"Error processing '{policy_area}': {e}"
+
+
+# -- Helper Function to write report to a PDF --
+    
+# Writes the compiled policy report to a PDF file.
+    
+def write_report_to_pdf(report_data, output_filepath):
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15) # Enable auto page breaks with a margin
+    
+    # --- FONT DEFINITIONS ---
+
+    font_dir = "./fonts"
+    regular_font_path = os.path.join(font_dir, "NotoSans-Regular.ttf")
+    italic_font_path = os.path.join(font_dir, "NotoSans-Italic.ttf")
+    bold_font_path = os.path.join(font_dir, "NotoSans-Bold.ttf")
+    bolditalic_font_path = os.path.join(font_dir, "NotoSans-BoldItalic.ttf")
+
+
+    pdf.add_font("NotoSans", "", regular_font_path)
+    pdf.add_font("NotoSans", "I", italic_font_path) 
+    pdf.add_font("NotoSans", "B", bold_font_path) 
+    pdf.add_font("NotoSans", "BI", bolditalic_font_path) 
+
+    # --- END FONT DEFINITIONS ---
+
+    # Add a title page or general header
+    pdf.add_page()
+    pdf.set_font("NotoSans", "BI", 20)
+    pdf.multi_cell(0, 12, "ROPSSA Employee Manuals - Compiled Policy Report", align='C')
+    pdf.ln(15) # Line break
+
+    pdf.set_font("NotoSans", "", 12)
+    pdf.multi_cell(0, 8, "This report synthesizes information from various versions of ROPSSA's employee manuals and highlights any contradictions or significant changes identified by the LLM.")
+    pdf.ln(10)
+
+    for topic, info in report_data.items():
+        if pdf.get_y() > (pdf.h - 40):
+            pdf.add_page()
+
+        pdf.set_font("NotoSans", "B", 16)
+        pdf.multi_cell(0, 10, f"Policy Area: {topic}", 0, 'L')
+        pdf.ln(4)
+
+        pdf.set_font("NotoSans", "", 11) # Regular font for content
+        # Ensure the LLM's response (info) is treated as a string and wrapped
+        pdf.multi_cell(0, 6, info.strip()) # Use multi_cell to handle line breaks and wrapping
+        pdf.ln(8) # Space after content
+
+        # Add a visual separator for clarity between policy areas
+        pdf.set_font("NotoSans", "I", 9) # Italic, smaller font for separator
+        pdf.multi_cell(0, 5, "-" * 100, align='C') # Centered dashes
+        pdf.ln(8)
+
+    pdf.output(output_filepath)
 
 
 # --- Main Program Logic ---
@@ -227,7 +306,7 @@ if __name__ == "__main__":
     compiled_report_by_topic = {}
     print("\n--- Starting Compilation and Contradiction Detection ---")
 
-    top_k = 5 # Retrieve top 5 relevant chunks from each manual for this policy area
+    top_k = 10 # Retrieve top 10 relevant chunks from each manual for this policy area
     for topic in KEY_POLICY_AREAS:
         # Pass the dictionary of vector stores to the compilation function
         compiled_info = compile_and_compare_policy_area(topic, manual_vector_stores, llm, top_k)
@@ -240,16 +319,27 @@ if __name__ == "__main__":
         print(info)
         print("\n--------------------------------------------------")
 
-    output_directory = "./output_reports"
+    output_directory = "./output_reports_version_2"
     os.makedirs(output_directory, exist_ok=True) # Ensure the output directory exists
 
-    json_output_filename = os.path.join(output_directory, "compiled_manual_report_vers.json")
+    # Below is code to save the report as a json file. 
+    # I thought it would be nice to have it as a PDF though so we probably wont use it...
 
+    # json_output_filename = os.path.join(output_directory, "compiled_manual_report_vers.json")
+
+    # try:
+    #     with open(json_output_filename, 'w', encoding='utf-8') as f:
+    #         json.dump(compiled_report_by_topic, f, indent=4, ensure_ascii=False)
+    #     print(f"\nSuccessfully saved compiled report to: {json_output_filename}")
+    # except Exception as e:
+    #     print(f"\nError saving JSON report: {e}")
+
+    # this saves the report to a pdf in the appropriate folder
+    pdf_output_filename = os.path.join(output_directory, "compiled_manual_report_vers.pdf")
     try:
-        with open(json_output_filename, 'w', encoding='utf-8') as f:
-            json.dump(compiled_report_by_topic, f, indent=4, ensure_ascii=False)
-        print(f"\nSuccessfully saved compiled report to: {json_output_filename}")
+        write_report_to_pdf(compiled_report_by_topic, pdf_output_filename)
+        print(f"Successfully saved compiled report to PDF: {pdf_output_filename}")
     except Exception as e:
-        print(f"\nError saving JSON report: {e}")
+        print(f"Error saving PDF report: {e}")
 
     print("\nProgram Finished.")
