@@ -240,4 +240,16 @@ if __name__ == "__main__":
         print(info)
         print("\n--------------------------------------------------")
 
+    output_directory = "./output_reports"
+    os.makedirs(output_directory, exist_ok=True) # Ensure the output directory exists
+
+    json_output_filename = os.path.join(output_directory, "compiled_manual_report_vers.json")
+
+    try:
+        with open(json_output_filename, 'w', encoding='utf-8') as f:
+            json.dump(compiled_report_by_topic, f, indent=4, ensure_ascii=False)
+        print(f"\nSuccessfully saved compiled report to: {json_output_filename}")
+    except Exception as e:
+        print(f"\nError saving JSON report: {e}")
+
     print("\nProgram Finished.")
