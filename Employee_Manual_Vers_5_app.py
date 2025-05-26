@@ -1,7 +1,6 @@
-# CHANGES FROM VERSION 3
-# 1. Reduced the temperature (make it less creative)
-# 2. Delete the oldest manual
-# 3. Change the categories
+# CHANGES FROM VERSION 4
+# 1. Key policy areas back to what they were
+# 2. Change the LLM model!!!!!!
 
 import os
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
@@ -10,7 +9,6 @@ from langchain_ollama import OllamaLLM
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.docstore.document import Document # Import Document class explicitly
-import json # To pretty print extracted schema data
 from fpdf import FPDF
 from datetime import datetime
 
@@ -29,11 +27,8 @@ OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
 
 # Define key policy areas/topics to analyze.
 # You can expand or modify this list based on what's important in your manuals.
-KEY_POLICY_AREAS = ["7.1 Hiring of employees",
-   "8.1 Probationary Period New Hire", "8.2 Probationary Period Promotion", 
-    "8.3 Evaluation in probationary period", "8.4 Dismissal during probationary period",
-     "8.5 probationary period unsatisfactory performance", "8.6 Leave of Absence during probationary period" 
-    , "8.7 removal from probationary period", "8.8 employee benefits"]
+KEY_POLICY_AREAS = ["7. Employment",
+   "8. Probationary Period and Status"]
 
 # --- Initialization ---
 print(f"Initializing LLM with Ollama model: {OLLAMA_LLM_MODEL}")
