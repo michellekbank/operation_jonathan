@@ -1,6 +1,8 @@
 # CHANGES FROM VERSION 4
 # 1. Key policy areas back to what they were
-# 2. Change the LLM model!!!!!!
+# 2. Change the LLM model to granite3-dense
+# 3. Print context text and response
+# 4. Experiment with LLM model granite3.2:2b
 
 import os
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
@@ -21,14 +23,13 @@ MANUAL_OLD_NAME = "Employee_Manual_2018.docx"      # The middle version
 MANUAL_NEWEST_NAME = "Employee_Manual_2023.pdf" # The newest version
 
 # --- Ollama Model Configuration ---
-OLLAMA_LLM_MODEL = "gemma3:latest"
+OLLAMA_LLM_MODEL = "granite3.2:2b"
 # dedicated embedding model that supports embeddings
 OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
 
 # Define key policy areas/topics to analyze.
 # You can expand or modify this list based on what's important in your manuals.
-KEY_POLICY_AREAS = ["7. Employment",
-   "8. Probationary Period and Status"]
+KEY_POLICY_AREAS = ["7. Employment"]
 
 # --- Initialization ---
 print(f"Initializing LLM with Ollama model: {OLLAMA_LLM_MODEL}")
@@ -180,24 +181,26 @@ def compile_and_compare_policy_area(policy_area, manual_vector_stores_dict, # Di
     You are an expert HR policy analyst. Your task is to meticulously review and compare **ONLY** the provided excerpts from two different versions
     of ROPSSA's employee manuals concerning the policy area: "{policy_area}".
 
-    **Crucial Constraints - READ CAREFULLY:**
-    * **DO NOT ADD ANY NEW INFORMATION, SECTIONS, SUB-SECTIONS, OR HEADINGS that are not explicitly present in the provided "Excerpts from Employee Manuals."**
-    * **ALL INFORMATION, SECTION NUMBERS, AND HEADINGS in your output MUST be directly quoted or clearly derived from the provided excerpts.**
-    * **DO NOT INFER, CONCLUDE, OR GENERATE content based on external knowledge.** Stick strictly to the given text.
+    **CRUCIAL CONSTRAINTS - READ CAREFULLY. STRICT ADHERENCE REQUIRED:**
+    * **DO NOT REPHRASE, SUMMARIZE, OR ABBREVIATE** any policy text in PART 1. You **MUST** use the exact wording from the provided "Excerpts from Employee Manuals."
+    * **DO NOT ADD ANY NEW INFORMATION, SECTIONS, SUB-SECTIONS, OR HEADINGS** that are not explicitly present in the provided "Excerpts from Employee Manuals."
+    * **ALL INFORMATION, SECTION NUMBERS, AND HEADINGS** in your output **MUST BE DIRECTLY QUOTED OR EXACTLY DERIVED** from the provided excerpts.
+    * **DO NOT INFER, CONCLUDE, OR GENERATE CONTENT BASED ON EXTERNAL KNOWLEDGE.** Stick strictly to the given text.
+    * **DO NOT OMMIT ANY INFORMATION. ** it is crucial that all information from the provided excerpts is included in your response.
 
     ---
-    **PART 1: SYNTHESIZED CONSISTENT POLICY**
+    ### PART 1: SYNTHESIZED CONSISTENT POLICY (EXACT QUOTES ONLY)
 
-    1.  **Synthesize and Combine:** Combine all consistent information regarding "{policy_area}" **EXCLUSIVELY** from the provided manuals into a clear, comprehensive policy statement.
+    1.  **Synthesize and Combine (Verbatim):** Combine all consistent information regarding "{policy_area}" **EXCLUSIVELY** from the provided manuals. For every piece of information, you **MUST copy and paste the exact, full sentence(s) or paragraph(s)** from the source text.
     2.  **Include Section Numbers & Headings (Exactly as Found):** For all synthesized policy details, you **MUST** include the exact section numbers (e.g., "7.1.1. Application") and their corresponding headings/titles **as found in the original excerpts**.
         * **Ensure you include information from ALL appropriate section numbers (e.g., 8.1 through 8.9) that are present in the provided excerpts.**
         * **DO NOT invent or re-number any sections that are not explicitly in the source text.**
-    3.  **Prioritize Newest Manual Language:** Mirror the language and structure of the **2023 manual** when synthesizing consistent information, ensuring section numbers are derived directly from the provided context. When there is little semantic contradiction, use the exact language from the 2023 manual.
+    3.  **Prioritize Newest Manual Language (Verbatim):** When identical or nearly identical content exists across manuals, prioritize and **use the exact language and structure from the 2023 manual**. Copy it verbatim.
 
     ---
-    **PART 2: CONTRADICTIONS AND SIGNIFICANT CHANGES**
+    ### PART 2: CONTRADICTIONS AND SIGNIFICANT CHANGES
 
-    If **ANY** contradictions or significant changes are identified **within the provided excerpts**, list them clearly. If there are none, state "No contradictions or significant changes identified for this policy area."
+    If **ANY** contradictions or significant changes in policy are identified **within the provided excerpts**, list them clearly. If there are none, state "No contradictions or significant changes identified for this policy area."
 
     For EACH contradiction or change, follow this exact format:
 
@@ -207,6 +210,7 @@ def compile_and_compare_policy_area(policy_area, manual_vector_stores_dict, # Di
     * **Significance:** [Brief explanation of the change/contradiction and its implications, **based ONLY on the provided texts**.]
 
     ---
+
     **Policy Area to Analyze:** {policy_area}
 
     **Excerpts from Employee Manuals (including source, page/chunk, and section context):**
@@ -214,12 +218,12 @@ def compile_and_compare_policy_area(policy_area, manual_vector_stores_dict, # Di
     {context_text}
     ---
 
-    **Your Compiled Information and Analysis (Start with PART 1, then PART 2):**
+    **Your Compiled Information and Analysis (PART 1, then PART 2):**
     """
 
     try:
         response = llm_model.invoke(prompt)
-        return response
+        return {"context_text": context_text, "llm_response": response}
     except Exception as e:
         return f"Error processing '{policy_area}': {e}"
 
@@ -258,23 +262,40 @@ def write_report_to_pdf(report_data, output_filepath):
     pdf.multi_cell(0, 8, "This report synthesizes information from various versions of ROPSSA's employee manuals and highlights any contradictions or significant changes identified by the LLM.")
     pdf.ln(10)
 
-    for topic, info in report_data.items():
-        if pdf.get_y() > (pdf.h - 40):
-            pdf.add_page()
+    for topic, data in report_data.items(): # 'data' now holds the dictionary: {"llm_response": ..., "context_text": ...}
+        llm_response_content = data["llm_response"] # Get the LLM's response string
+        context_text_content = data["context_text"] # Get the raw context string
 
+        # Main Policy Area Heading
+        if pdf.get_y() > (pdf.h - 60): # Added more margin for the new section
+            pdf.add_page()
         pdf.set_font("NotoSans", "B", 16)
         pdf.multi_cell(0, 10, f"Policy Area: {topic}", 0, 'L')
         pdf.ln(4)
 
+        # LLM's Compiled Information
         pdf.set_font("NotoSans", "", 11) # Regular font for content
-        # Ensure the LLM's response (info) is treated as a string and wrapped
-        pdf.multi_cell(0, 6, info.strip()) # Use multi_cell to handle line breaks and wrapping
+        # Use the variable holding the string content
+        pdf.multi_cell(0, 6, llm_response_content.strip()) # <--- FIXED HERE
         pdf.ln(8) # Space after content
+
+        # Raw Context Text Section
+        if context_text_content.strip(): # Only add if there's actual context
+            if pdf.get_y() > (pdf.h - 40): # Check for page break before adding context
+                pdf.add_page()
+            pdf.set_font("NotoSans", "B", 12)
+            pdf.multi_cell(0, 8, "--- Raw Context Provided to LLM ---", 0, 'L')
+            pdf.ln(2)
+            pdf.set_font("NotoSans", "I", 9) # Smaller, italic font for raw context
+            # Use the variable holding the string content
+            pdf.multi_cell(0, 4, context_text_content.strip()) # <--- FIXED HERE
+            pdf.ln(8)
 
         # Add a visual separator for clarity between policy areas
         pdf.set_font("NotoSans", "I", 9) # Italic, smaller font for separator
         pdf.multi_cell(0, 5, "-" * 100, align='C') # Centered dashes
         pdf.ln(8)
+
 
     pdf.output(output_filepath)
 
@@ -313,7 +334,7 @@ if __name__ == "__main__":
     compiled_report_by_topic = {}
     print("\n--- Starting Compilation and Contradiction Detection ---")
 
-    top_k = 2 # Retrieve top 5 relevant chunks from each manual for this policy area
+    top_k = 7 # Retrieve top 5 relevant chunks from each manual for this policy area
     for topic in KEY_POLICY_AREAS:
         # Pass the dictionary of vector stores to the compilation function
         compiled_info = compile_and_compare_policy_area(topic, manual_vector_stores, llm, top_k)
@@ -326,7 +347,7 @@ if __name__ == "__main__":
         print(info)
         print("\n--------------------------------------------------")
 
-    output_directory = "./output_reports_version_4"
+    output_directory = "./output_reports_version_5"
     os.makedirs(output_directory, exist_ok=True) # Ensure the output directory exists
 
     # Generate a timestamp for unique filenames
