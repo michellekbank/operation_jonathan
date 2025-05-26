@@ -1,3 +1,9 @@
+# MAJOR CHANGES FROM VERSION 5:
+# * Identified section headers and stored them as metadata
+# * Changed chunk retrieval to get 5 times the top_k amount (5), then filtered based on the section
+#         if there were still too many chunks, top_k again.
+# * Refine prompt
+
 import os
 import re # Import regex module
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
@@ -391,7 +397,7 @@ if __name__ == "__main__":
     compiled_report_by_topic = {}
     print("\n--- Starting Compilation and Contradiction Detection ---")
 
-    top_k = 5 # Retrieve top 7 relevant chunks from each manual for this policy area
+    top_k = 5 # Retrieve top 5 relevant chunks from each manual for this policy area
     for topic in KEY_POLICY_AREAS:
         compiled_data = compile_and_compare_policy_area(topic, manual_vector_stores, llm, top_k)
         compiled_report_by_topic[topic] = compiled_data

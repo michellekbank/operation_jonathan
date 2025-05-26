@@ -1,3 +1,5 @@
+# If headings were inconsistent, use the ones from 2023 instead of 2018
+
 import os
 import re # Import regex module
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader

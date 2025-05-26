@@ -1,3 +1,9 @@
+# MAJOR CHANGES FROM VERSION 6:
+# Add way more metadata including full heading, subheadings, and such
+# Include this when feeding into the LLM
+# Sort the data by number so it would be feeding the LLM the policies in numerical order
+
+
 import os
 import re # Import regex module
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
@@ -37,9 +43,7 @@ KEY_POLICY_AREAS = ["7. Employment",
    "21. Separation",
    "22. Employee Discipline",
    "23. Disciplinary Procedures",
-   "24. Nepotism",
-   "25. Social Security Employee Code of Conduct",
-   "26. Revisions or Amendments"
+   "24. Nepotism"
 ]
 
 # --- Initialization ---
@@ -388,22 +392,6 @@ def write_report_to_pdf(report_data, output_filepath):
         pdf.multi_cell(0, 6, llm_response_content.strip())
         pdf.ln(8)
 
-        # if context_text_content.strip():
-        #     if pdf.get_y() > (pdf.h - 40):
-        #         pdf.add_page()
-        #     try:
-        #         pdf.set_font("NotoSans", "B", 12)
-        #     except:
-        #         pdf.set_font("Helvetica", "B", 12)
-        #     pdf.multi_cell(0, 8, "--- Raw Context Provided to LLM ---", 0, 'L')
-        #     pdf.ln(2)
-        #     try:
-        #         pdf.set_font("NotoSans", "I", 9)
-        #     except:
-        #         pdf.set_font("Helvetica", "I", 9)
-        #     pdf.multi_cell(0, 4, context_text_content.strip())
-        #     pdf.ln(8)
-
         try:
             pdf.set_font("NotoSans", "I", 9)
         except:
@@ -460,7 +448,7 @@ if __name__ == "__main__":
     compiled_report_by_topic = {}
     print("\n--- Starting Compilation and Contradiction Detection ---")
 
-    top_k = 5 # Retrieve top 7 relevant chunks from each manual for this policy area
+    top_k = 5 # Retrieve top 5 relevant chunks from each manual for this policy area
     for topic in KEY_POLICY_AREAS:
         compiled_data = compile_and_compare_policy_area(topic, manual_vector_stores, llm, top_k)
         compiled_report_by_topic[topic] = compiled_data
