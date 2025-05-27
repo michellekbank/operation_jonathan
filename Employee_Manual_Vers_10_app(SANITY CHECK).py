@@ -1,5 +1,8 @@
+# CHANGES FROM VERSION 9
+# this is just a sanity check to make sure we can't just feed it all into the LLM and
+# ask it to do our job for us...
+
 import os
-import re
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain_ollama import OllamaLLM
 from fpdf import FPDF
@@ -13,30 +16,23 @@ MANUAL_NEWEST_NAME = "Employee_Manual_2023.pdf"
 
 # --- Ollama Model Configuration ---
 OLLAMA_LLM_MODEL = "granite3-dense"
-# Note: Embeddings model is no longer directly used as there's no vector store
-# OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
 
 # Define key policy areas/topics to analyze.
 KEY_POLICY_AREAS = [
-   "24. Nepotism" # Testing with a short section
+   "24. Nepotism"
 ]
 
 # --- Initialization ---
 print(f"Initializing LLM with Ollama model: {OLLAMA_LLM_MODEL}")
-# Keep temperature low for factual accuracy, but it might still struggle with raw parsing
 llm = OllamaLLM(model=OLLAMA_LLM_MODEL, temperature=0.1)
 
-# Embeddings initialization removed as it's no longer used for retrieval
-# print(f"Initializing Embeddings with Ollama model: {OLLAMA_EMBEDDING_MODEL}")
-# embeddings = OllamaEmbeddings(model=OLLAMA_EMBEDDING_MODEL)
 
 # --- Functions ---
 
+    # Loads the entire raw text content from a single document.
+    # Returns the concatenated text from all pages.  
 def load_document_content(filepath):
-    """
-    Loads the entire raw text content from a single document.
-    Returns the concatenated text from all pages.
-    """
+    
     loader = None
     if filepath.endswith(".pdf"):
         loader = PyPDFLoader(filepath)
@@ -56,12 +52,7 @@ def load_document_content(filepath):
     
     return full_text
 
-# --- Removed functions related to splitting and vector store ---
-# split_documents is no longer needed as we're using raw text directly
-# create_vector_store is no longer needed
-# chunk_retrieval is no longer needed
-
-# --- compile_and_compare_policy_area (MODIFIED FOR RAW TEXT INPUT) ---
+# --- compile_and_compare_policy_area ---
 def compile_and_compare_policy_area(policy_area, manual_old_text, manual_newest_text, llm_model):
     """
     Compiles policy information and identifies contradictions using an LLM,
@@ -70,15 +61,12 @@ def compile_and_compare_policy_area(policy_area, manual_old_text, manual_newest_
     print(f"\n--- Analyzing Policy Area: '{policy_area}' ---")
     
     # Combine the raw texts from both manuals for the LLM's context
-    # The LLM is now responsible for identifying sections and extracting content.
     context_text = (
         f"--- Content from {MANUAL_OLD_NAME} ---\n"
         f"{manual_old_text}\n\n"
         f"--- Content from {MANUAL_NEWEST_NAME} ---\n"
         f"{manual_newest_text}"
     )
-
-    # print(f"\n -- Full Raw Context Text Provided to LLM:\n{context_text}\n--- End Full Raw Context Text ---")
 
     prompt = f"""
     You are an expert HR policy analyst. Your task is to meticulously review and compare the content
@@ -140,7 +128,7 @@ def write_report_to_pdf(report_data, output_filepath):
             pdf.set_font("NotoSans", "", 12)
         else:
             print(f"Warning: NotoSans-Regular.ttf not found at {regular_font_path}. Using default font.")
-            pdf.set_font("Helvetica", "", 12) # Fallback
+            pdf.set_font("Helvetica", "", 12)
         if os.path.exists(italic_font_path):
             pdf.add_font("NotoSans", "I", italic_font_path)
         if os.path.exists(bold_font_path):
@@ -222,13 +210,9 @@ if __name__ == "__main__":
     print(f"Manual {MANUAL_OLD_NAME} loaded with {len(manual_old_text)} characters.")
     print(f"Manual {MANUAL_NEWEST_NAME} loaded with {len(manual_newest_text)} characters.")
 
-    # No vector stores or chunking in this version
-
     compiled_report_by_topic = {}
     print("\n--- Starting Compilation and Contradiction Detection ---")
 
-    # top_k is no longer relevant as there's no retrieval
-    # Removed top_k from the loop as well
     for topic in KEY_POLICY_AREAS:
         # Pass raw texts directly to the compilation function
         compiled_data = compile_and_compare_policy_area(topic, manual_old_text, manual_newest_text, llm)
@@ -241,7 +225,7 @@ if __name__ == "__main__":
         print(data["llm_response"])
         print("\n--------------------------------------------------")
 
-    output_directory = "./output_reports_raw_text" # New output directory for raw text version
+    output_directory = "./output_reports_version_10"
     os.makedirs(output_directory, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

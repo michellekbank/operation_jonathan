@@ -4,6 +4,8 @@
 # Then uses recursive character text splitter to make sure they are small enough MAKING SURE sub chunks keep the metadata
 # Experimented with larger and smaller chunks… seemed to work better, so checked out chunk size 300, overlap 80
 
+# -*-*-*-*- THIS IS THE BEST VERSION WE HAVE OF THE EMPLOYEE MANUAL PROCESSOR -*-*-*-*-
+
 import os
 import re
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
