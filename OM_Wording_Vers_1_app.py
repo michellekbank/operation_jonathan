@@ -10,7 +10,7 @@ from datetime import datetime
 DOCUMENT_LIBRARY_PATH = "./operations_manual_chunks/Operational Rules and Procedures"
 
 # --- Ollama Model Configuration ---
-OLLAMA_LLM_MODEL = "granite3-dense"
+OLLAMA_LLM_MODEL = "granite3.2:8b"
 
 # -- organization names --
 ORG_A_NAMES = ["ROPSSA", "Republic of Palau Social Security Administration", "SSA", 
