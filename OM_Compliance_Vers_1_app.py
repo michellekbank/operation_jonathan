@@ -47,12 +47,28 @@ LIST_OF_MANUAL_FILES = ["section 101-112.docx",
 # Define specific aspects/questions for targeted compliance checks
 # These are broader themes that the LLM will focus on when comparing to guidelines
 # Replace this with actual aspects you want to check!
-COMPLIANCE_ASPECTS_TO_CHECK = [
-   "Data privacy and confidentiality requirements.",
-   "Employee conduct and ethics policies.",
-   "Financial reporting and accountability standards.",
-   "Hiring and termination procedures.",
-   "Benefit eligibility and disbursement rules."
+COMPLIANCE_ASPECTS_TO_CHECK = ["Establishment and Legal Basis of the Social Security Board and Healthcare Financing System",
+        "Functions, members, and procedures of the Social Security Board",
+        "Actuarial Soundness and Sustainability",
+        "Fund Reserves and Solvency Requirements",
+        "Audit Requirements and External Oversight",
+        "Duties, functions, appointment of the Social Security Administrator",
+        "Secretaries, managers, and other staff",
+        "Financial reporting and budget",
+        "Governance Structure and Oversight Mechanisms (including the National Healthcare Financing Governing Committee or the “Committee”)",
+        "Enrollment and eligibility criteria",
+        "Data management, security, and information sharing mechanisms and policies",
+        "Appeals and Dispute Resolution Mechanisms",
+        "Beneficiary Rights and Responsibilities",
+        "Investment Policies, Portfolio Management, and Performance Reporting",
+        "Incomes and contributions or payments",
+        "Claims",
+        "Aspects of health insurance, including benefits, exclusions, reimbursements, and subscriptions",
+        "Privacy",
+        "Employee offenses and penalties including fraud, failure to report or pay, false claims",
+        "Enforcement Powers and Sanctions for Non-Compliance (beyond just offenses)",
+        "Succession and transfer of medical savings account after death",
+        "The keeping of accounts and reports"
 ]
 
 # --- INITIALIZATION ---
@@ -165,7 +181,6 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
             * **NOT ADDRESSED:** If the manual chunk does not mention or cover this guideline aspect at all.
         2.  **Explanation & Reasoning:** Provide a concise, objective explanation for your status determination.
         3.  **Verbatim Citations (Crucial):** You MUST cite specific, verbatim phrases or sentences from **both** the 'Operations Manual Chunk' and the 'Relevant Guidelines' to support your reasoning. For each citation, include its original source (e.g., "Manual: '...' (from Section X.Y)", "Guideline: '...' (from Page Z)"). These citations are paramount for traceability.
-        4.  **Scope:** Consider the context of organizations: {org_a_all_names} and {org_b_all_names}. If a guideline or manual text is general, assume it applies broadly unless specified.
 
         **Operations Manual Chunk for Evaluation (from {manual_chunk_filename}):**
         ---
