@@ -2,23 +2,25 @@ import os
 import re
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_ollama import OllamaLLM, OllamaEmbeddings
+from langchain_openai import ChatOpenAI
+from langchain_community.embeddings import HuggingFaceEmbeddings
+
 from langchain_community.vectorstores import FAISS
 from langchain.docstore.document import Document
 
 from fpdf import FPDF
+import datetime
 from datetime import datetime
+import time
 
 # --- SETUP ---
+print("Starting ROPSSA Operations Manual Compliance Checker...")
 
-# --- Ollama Model Configuration ---
-OLLAMA_LLM_MODEL = "mistral:7b-instruct-q4_k_m"
 #  mistral:7b-text ?
 # "mistral-7b-instruct" # "llama3.1-8b-instruct" # "llama3.1-8b-chat"
 # deepseek-r1:7b , :8b , :14b , :32b
 # qwen3:8b , qwen3:14b , qwen3:32b , qwem3:30b-a3b
-OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
-TOP_K_GUIDELINES = 7
+TOP_K_GUIDELINES = 5
 TEMPERATURE = 0.2 # CHANGE TO 0.2?
 
 # --- Configuration ---
@@ -33,25 +35,25 @@ ORG_B_NAMES = ["HCF", "Health Care Fund", "Republic of Palau Health Care Fund",
 
 # -- list of directory paths to the individual files --
 LIST_OF_MANUAL_FILES = ["section 101-112.docx",
-                        #  "section 201-202.docx", "section 203–204.docx", 
-                        #  "section 205–206.5.docx", "section 304.docx", 
-                        #  "section 323-325.docx", "section 506-510.docx", 
-                        #  "section 707-711.docx", "sections 206.5A–206.5B.docx", 
-                        #  "sections 207–213.docx", "sections 214–215.docx", 
-                        #  "sections 216–218.docx", "sections 219–220.docx", 
-                        #  "sections 301–303.docx", "sections 305–309.docx", 
-                        #  "sections 310–317.docx", "sections 318–322.docx", 
-                        #  "sections 326–330.docx", "sections 401–407.docx", 
-                        #  "sections 501–505.docx", "sections 601–603.docx", 
-                        #  "sections 701–706.docx", "sections 801–807.docx", 
-                        #  "sections 901–907.docx"
+                         "section 201-202.docx", "section 203–204.docx", 
+                         "section 205–206.5.docx", "section 304.docx", 
+                         "section 323-325.docx", "section 506-510.docx", 
+                         "section 707-711.docx", "sections 206.5A–206.5B.docx", 
+                         "sections 207–213.docx", "sections 214–215.docx", 
+                         "sections 216–218.docx", "sections 219–220.docx", 
+                         "sections 301–303.docx", "sections 305–309.docx", 
+                         "sections 310–317.docx", "sections 318–322.docx", 
+                         "sections 326–330.docx", "sections 401–407.docx", 
+                         "sections 501–505.docx", "sections 601–603.docx", 
+                         "sections 701–706.docx", "sections 801–807.docx", 
+                         "sections 901–907.docx"
                         ]
 
 
 # Define specific aspects/questions for targeted compliance checks
 # These are broader themes that the LLM will focus on when comparing to guidelines
 # Replace this with actual aspects you want to check!
-COMPLIANCE_ASPECTS_TO_CHECK = ["Establishment and Legal Basis of the Social Security Board and Healthcare Financing System",
+COMPLIANCE_ASPECTS_TO_CHECK = [
         "Functions, members, and procedures of the Social Security Board",
         "Actuarial Soundness and Sustainability",
         "Fund Reserves and Solvency Requirements",
@@ -76,11 +78,12 @@ COMPLIANCE_ASPECTS_TO_CHECK = ["Establishment and Legal Basis of the Social Secu
 ]
 
 # --- INITIALIZATION ---
-print(f"Initializing LLM with Ollama model: {OLLAMA_LLM_MODEL}")
-llm = OllamaLLM(model=OLLAMA_LLM_MODEL, temperature=TEMPERATURE)
+lm_studio_base_url = "http://localhost:1234/v1"  # Default LM Studio URL
+print(f"Initializing LLM with LM Studio (local OpenAI-compatible API) from: {lm_studio_base_url}")
+llm = ChatOpenAI(base_url = lm_studio_base_url, api_key="lm-studio", model="local-model",temperature = TEMPERATURE)
 
-print(f"Initializing Embeddings with Ollama model: {OLLAMA_EMBEDDING_MODEL}")
-embeddings = OllamaEmbeddings(model=OLLAMA_EMBEDDING_MODEL)
+print(f"Initializing Embeddings with CPU-Based HuggingFaceEmbeddings.")
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", model_kwargs={"device": "cpu"})
 
 # -- FUNCTIONS --
 
@@ -147,10 +150,6 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
     print(f"\n--- Checking Compliance for Manual Chunk: '{manual_chunk_filename}' ---")
     compliance_report_content = [] # Store parts of the report
 
-    # Combine organization names for context in the prompt
-    org_a_all_names = ", ".join(ORG_A_NAMES)
-    org_b_all_names = ", ".join(ORG_B_NAMES)
-
     # Iterating through each compliance aspect for a targeted check
     if not compliance_aspects:
         compliance_report_content.append("No specific compliance aspects defined. Cannot perform targeted checks.")
@@ -162,6 +161,7 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
         
         # Retrieve relevant sections from the guidelines document based on the aspect query
        # Use the helper function to get relevant guidelines
+        print(f"   Retrieving relevant guidelines for aspect: '{aspect}'...")
         guidelines_context, guidelines_found = get_relevant_guideline_context(aspect, guidelines_vectorstore, top_k_value)
         
         if not guidelines_found:
@@ -171,25 +171,28 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
             )
             continue
 
-        relevance_prompt = f"""
-        Given the following Operations Manual Chunk and the Compliance Aspect: "{aspect}," does the Manual Chunk contain any information or discussion directly relevant
-        to this aspect? Respond only with "YES", "NO", or "AMBIGUOUS".
+        # relevance_prompt = f"""
+        # Given the following Operations Manual Chunk and the Compliance Aspect: "{aspect}," does the Manual Chunk contain any information or discussion directly relevant
+        # to this aspect? Respond only with "YES", "NO", or "AMBIGUOUS".
 
-        Operations Manual Chunk:
-        ---
-        {manual_chunk_full_text}
-        ---
-        Compliance Aspect: "{aspect}"
-        """
+        # Operations Manual Chunk:
+        # ---
+        # {manual_chunk_full_text}
+        # ---
+        # Compliance Aspect: "{aspect}"
+        # """
+        # print(f"    Prompting LLM for relevance check on aspect: '{aspect}'...")
+        # start_time = time.time()
+        # relevance_response = llm_model.invoke(relevance_prompt).content.strip().upper()
+        # elapsed = time.time() - start_time
+        # print(f"    Relevance LLM call took {elapsed:.2f} seconds.")
 
-        relevance_response = llm_model.invoke(relevance_prompt).strip().upper()
-
-        if relevance_response == "NO":
-            compliance_report_content.append(
-                f"\n**Compliance Aspect: {aspect}**\n"
-                f"  - Status: NOT ADDRESSED (No relevant content found in the manual chunk for this aspect)."
-            )
-            continue
+        # if relevance_response == "NO":
+        #     compliance_report_content.append(
+        #         f"\n**Compliance Aspect: {aspect}**\n"
+        #         f"  - Status: NOT ADDRESSED (No relevant content found in the manual chunk for this aspect)."
+        #     )
+        #     continue
 
         # --- LLM Prompt for Compliance Check ---
         prompt = f"""
@@ -221,8 +224,12 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
         # --- End of LLM Prompt ---
 
         try:
+            start_time = time.time()
+            print(f"    Prompting LLM for compliance analysis on aspect: '{aspect}'...")
             response = llm_model.invoke(prompt)
-            compliance_report_content.append(f"\n**Compliance Aspect: {aspect}**\n{response.strip()}")
+            elapsed = time.time() - start_time
+            print(f"    Compliance LLM call took {elapsed:.2f} seconds.")
+            compliance_report_content.append(f"\n**Compliance Aspect: {aspect}**\n{response.content.strip()}")
         except Exception as e:
             compliance_report_content.append(f"\n**Compliance Aspect: {aspect}**\n  - Error during analysis: {e}")
             print(f"  Error analyzing aspect '{aspect}' for '{manual_chunk_filename}': {e}")
