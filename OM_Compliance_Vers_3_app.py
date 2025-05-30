@@ -171,28 +171,28 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
             )
             continue
 
-        # relevance_prompt = f"""
-        # Given the following Operations Manual Chunk and the Compliance Aspect: "{aspect}," does the Manual Chunk contain any information or discussion directly relevant
-        # to this aspect? Respond only with "YES", "NO", or "AMBIGUOUS".
+        relevance_prompt = f"""
+        Given the following Operations Manual Chunk and the Compliance Aspect: "{aspect}," does the Manual Chunk contain any information or discussion directly relevant
+        to this aspect? Respond only with "YES", "NO", or "AMBIGUOUS".
 
-        # Operations Manual Chunk:
-        # ---
-        # {manual_chunk_full_text}
-        # ---
-        # Compliance Aspect: "{aspect}"
-        # """
-        # print(f"    Prompting LLM for relevance check on aspect: '{aspect}'...")
-        # start_time = time.time()
-        # relevance_response = llm_model.invoke(relevance_prompt).content.strip().upper()
-        # elapsed = time.time() - start_time
-        # print(f"    Relevance LLM call took {elapsed:.2f} seconds.")
+        Operations Manual Chunk:
+        ---
+        {manual_chunk_full_text}
+        ---
+        Compliance Aspect: "{aspect}"
+        """
+        print(f"    Prompting LLM for relevance check on aspect: '{aspect}'...")
+        start_time = time.time()
+        relevance_response = llm_model.invoke(relevance_prompt).content.strip().upper()
+        elapsed = time.time() - start_time
+        print(f"    Relevance LLM call took {elapsed:.2f} seconds.")
 
-        # if relevance_response == "NO":
-        #     compliance_report_content.append(
-        #         f"\n**Compliance Aspect: {aspect}**\n"
-        #         f"  - Status: NOT ADDRESSED (No relevant content found in the manual chunk for this aspect)."
-        #     )
-        #     continue
+        if relevance_response == "NO":
+            compliance_report_content.append(
+                f"\n**Compliance Aspect: {aspect}**\n"
+                f"  - Status: NOT ADDRESSED (No relevant content found in the manual chunk for this aspect)."
+            )
+            continue
 
         # --- LLM Prompt for Compliance Check ---
         prompt = f"""
@@ -248,15 +248,15 @@ def write_report_to_pdf(report_data, output_filepath):
     bolditalic_font_path = os.path.join(font_dir, "NotoSans-BoldItalic.ttf")
 
     if os.path.exists(regular_font_path):
-        pdf.add_font("NotoSans", "", regular_font_path)
+        pdf.add_font("NotoSans", "", regular_font_path, uni=True)
     else:
         print(f"Warning: NotoSans-Regular.ttf not found at {regular_font_path}. Using default font.")
     if os.path.exists(italic_font_path):
-        pdf.add_font("NotoSans", "I", italic_font_path)
+        pdf.add_font("NotoSans", "I", italic_font_path, uni=True)
     if os.path.exists(bold_font_path):
-        pdf.add_font("NotoSans", "B", bold_font_path)
+        pdf.add_font("NotoSans", "B", bold_font_path, uni=True)
     if os.path.exists(bolditalic_font_path):
-        pdf.add_font("NotoSans", "BI", bolditalic_font_path)
+        pdf.add_font("NotoSans", "BI", bolditalic_font_path, uni=True)
 
     pdf.add_page()
     try:
@@ -329,13 +329,13 @@ def write_individual_response_to_pdf(llm_response_content, original_filename, ou
     bolditalic_font_path = os.path.join(font_dir, "NotoSans-BoldItalic.ttf")
 
     if os.path.exists(regular_font_path):
-        pdf.add_font("NotoSans", "", regular_font_path)
+        pdf.add_font("NotoSans", "", regular_font_path, uni=True)
     if os.path.exists(italic_font_path):
-        pdf.add_font("NotoSans", "I", italic_font_path)
+        pdf.add_font("NotoSans", "I", italic_font_path, uni=True)
     if os.path.exists(bold_font_path):
-        pdf.add_font("NotoSans", "B", bold_font_path)
+        pdf.add_font("NotoSans", "B", bold_font_path, uni=True)
     if os.path.exists(bolditalic_font_path):
-        pdf.add_font("NotoSans", "BI", bolditalic_font_path)
+        pdf.add_font("NotoSans", "BI", bolditalic_font_path, uni=True)
 
     pdf.add_page()
     try:

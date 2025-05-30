@@ -7,6 +7,7 @@ from langchain_community.vectorstores import FAISS
 from langchain.docstore.document import Document
 
 from fpdf import FPDF
+import datetime
 from datetime import datetime
 
 # --- SETUP ---
