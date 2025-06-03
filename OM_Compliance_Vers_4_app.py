@@ -1,5 +1,5 @@
 # Create a Vector Store for Compliance Aspects: 
-#   We'll embed your COMPLIANCE_ASPECTS_TO_CHECK list into a FAISS vector store.
+#   embed COMPLIANCE_ASPECTS_TO_CHECK list into a FAISS vector store.
 # Filter Aspects per Manual Chunk: 
 #   For each manual_chunk_full_text, we'll use its embedding to find the most relevant 
 #   compliance aspects from your predefined list.
@@ -28,7 +28,7 @@ print("Starting ROPSSA Operations Manual Compliance Checker...")
 TOP_K_GUIDELINES = 5 # Number of top guidelines to retrieve for an aspect
 TEMPERATURE = 0.1    # LLM temperature for creative/randomness in responses
 
-# NEW: Number of top compliance aspects to consider for each manual chunk
+# Number of top compliance aspects to consider for each manual chunk
 # This helps filter down the broad list to only what's relevant to the chunk.
 TOP_K_RELEVANT_ASPECTS_PER_CHUNK = 3 
 # You might want to tune this. Too low, and you miss things. Too high, and you might still get irrelevant aspects.
@@ -208,7 +208,6 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
 
         2.  **Explanation & Reasoning:** Provide a concise, objective explanation for your status determination.
         3.  **Verbatim Citations (Crucial):** You MUST cite specific, verbatim phrases or sentences from **both** the 'Operations Manual Chunk' and the 'Relevant Guidelines' to support your reasoning. For each citation, include its original source (e.g., "Manual: '...' (from Section X.Y)", "Guideline: '...' (from Page Z)"). These citations are paramount for traceability. If no direct citation from the manual can be found to support a compliance claim for 'COMPLIANT' or 'NON-COMPLIANT', consider if it is 'NOT ADDRESSED'.
-        4.  **Scope:** Consider the context of organizations: {org_a_all_names} and {org_b_all_names}. If a guideline or manual text is general, assume it applies broadly unless specified.
 
         **Operations Manual Chunk for Evaluation (from {manual_chunk_filename}):**
         ---

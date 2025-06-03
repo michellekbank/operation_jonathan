@@ -1,3 +1,33 @@
+# Designed by: Michelle Bank and Carter Musheno
+# Programmed and developed by: Michelle Bank
+#     for assistance, please contact: mbank@andrew.cmu.edu
+
+#     By the MOU signed by the appropriate parties including the student consultant and representatives from ROPSSA/HCF and Carnegie Mellon, this 
+#     program is intellectual property of Michelle Bank and Carter Musheno. ROPSSA and HCF have a worldwide, non-exclusive, royalty-free right and license to copy,
+#     modify, publish, distribute, and otherwise use the program and its documentation for purposes consistent with ROPSSA and HCF's mission and 
+#     status as an agency.
+
+#     This program is designed to be used by ROPSSA & HCF for the purpose of checking compliance of the Operations Manual and other various documents
+#     against a set of guidelines.
+
+# Description: This script is designed to check a small section of a document against a set of guidelines.
+#     It analyzes the section to determine appropriate compliance aspects then loads relevant chunks from the guidelines document and checks the section
+#     against the appropriate guidelines.
+
+# Intented Use: It is designed to be used when a small chunk manual is updated and needs to be checked against a set of guidelines.
+#     Runtime for this script is much shorter than the full compliance checker script, as it only checks the most relevant aspects of the guidelines.
+#     This makes it an effective tool for quickly checking compliance of small sections of the manual without needing to run the full compliance checker.
+#     Consider specifying what was specifically updated in the manual chunk to help the LLM focus on the most relevant aspects. This can be done by including this
+#     information in the list of "aspects" to check, or by providing a brief description of the changes made to the manual chunk in the LLM prompt.
+
+# Troubleshooting: If you encounter issues with the script, please check the following:
+#   1. Ensure that the LM Studio is running and accessible at the specified base URL.
+#   2. Ensure that the guidelines document and manual files are present in the specified directories.
+#   3. Ensure that the required Python packages are installed and up-to-date.
+#   4. If you encounter any errors, please check the console output for debugging messages and error messages.
+
+# --- import necessary libraries ---
+
 import os
 import re
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
@@ -6,37 +36,38 @@ from langchain_openai import ChatOpenAI
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from langchain_community.vectorstores import FAISS
-from langchain.docstore.document import Document
 
 from fpdf import FPDF
 from datetime import datetime
 import time
 
-# --- SETUP ---
-print("Starting ROPSSA Operations Manual Compliance Checker...")
+print("Starting ROPSSA Operations Manual Compliance Checker...") # Debugging message to indicate the script has started
 
-TOP_K_GUIDELINES = 5  # Number of top guidelines to retrieve for an aspect
-TEMPERATURE = 0.1     # LLM temperature for creative/randomness in responses
+# --- Configuration Parameters ---
+# These parameters can be adjusted based on the specific requirements of the compliance check
+TOP_K_GUIDELINES = 7 # This is the number of top relevant guideline chunks to retrieve for each compliance aspect check
+TEMPERATURE = 0.1 # This controls the randomness of the LLM's responses. Lower values make it more deterministic and less creative.
+# if you want more creative responses, you can increase this value (e.g., 0.5 or 0.7), but for compliance checks, a lower value is usually better.
 
 # --- Configuration ---
 DOCUMENT_LIBRARY_PATH = "./operations_manual_chunks/Operational Rules and Procedures"
 
 GUIDELINES_DOC_NAME = "41 PNCA 2025.pdf" # Name of your guidelines document
-# -- organization names --
-ORG_A_NAMES = ["ROPSSA", "Republic of Palau Social Security Administration", "SSA",
-               "Social Security Administration", "Social Security"]
-ORG_B_NAMES = ["HCF", "Health Care Fund", "Republic of Palau Health Care Fund",
-               "Healthcare Fund", "ROPHCF"]
 
 # -- list of directory paths to the individual files --
-LIST_OF_MANUAL_FILES = [ #"section 101-112.docx",
-#                         "section 201-202.docx", "section 203–204.docx",
-#                         "section 205–206.5.docx", "section 304.docx",
-#                         "section 323-325.docx", "section 506-510.docx",
-#                         "section 707-711.docx", "sections 206.5A–206.5B.docx",
-#                         "sections 207–213.docx", "sections 214–215.docx",
-#                         "sections 216–218.docx", "sections 219–220.docx",
-#                         "sections 301–303.docx", 
+
+# This is a list of the manual files to be processed. Each file should be in the DOCUMENT_LIBRARY_PATH directory.
+    # additionally, the files should be in the format of .docx, .pdf, or .txt.
+    # the files should also be around 5000 characters or less in length, as the LLM can handle up to 8000 characters per prompt.
+    # Longer files may result in suboptimal performance or errors.
+LIST_OF_MANUAL_FILES = [ "Section 101-112.docx",
+                        "section 201-202.docx", "section 203–204.docx",
+                        "section 205–206.5.docx", "section 304.docx",
+                        "section 323-325.docx", "section 506-510.docx",
+                        "section 707-711.docx", "sections 206.5A–206.5B.docx",
+                        "sections 207–213.docx", "sections 214–215.docx",
+                        "sections 216–218.docx", "sections 219–220.docx",
+                        "sections 301–303.docx", 
                         "sections 305–309.docx",
                         "sections 310–317.docx", "sections 318–322.docx",
                         "sections 326–330.docx", "sections 401–407.docx",
@@ -46,8 +77,10 @@ LIST_OF_MANUAL_FILES = [ #"section 101-112.docx",
                        ]
 
 
-# Define specific aspects/questions for targeted compliance checks
-# These are broader themes that the LLM will focus on when comparing to guidelines
+# Define specific aspects for targeted compliance checks. This is a list of compliance aspects that the LLM will consider to check against the guidelines.
+#     NOTE: NOT ALL OF THESE ASPECTS WILL BE CHECKED FOR EACH MANUAL CHUNK!
+#     These aspects are derived from the guidelines document and represent key areas of compliance that need to be verified.
+#     The LLM will analyze each manual chunk against the MOST RELEVANT of these aspects and provide a compliance report.
 COMPLIANCE_ASPECTS_TO_CHECK = [
         "Establishment and Legal Basis of the Social Security and Healthcare Financing System",
         "Functions, members, and procedures of the Social Security Board",
@@ -73,8 +106,10 @@ COMPLIANCE_ASPECTS_TO_CHECK = [
         "The keeping of accounts and reports"
 ]
 
-# --- INITIALIZATION ---
-lm_studio_base_url = "http://localhost:1234/v1"
+# --- INITIALIZATION OF LLM ---
+
+# Ensure the model is running in LM studio on your computer
+lm_studio_base_url = "http://localhost:1234/v1"  # Default LM Studio URL. Depending on your setup, you may need to change this. Check LM Studio settings.
 print(f"Initializing LLM with LM Studio (local OpenAI-compatible API) from: {lm_studio_base_url}")
 llm = ChatOpenAI(base_url=lm_studio_base_url, api_key="lm-studio", model="local-model", temperature=TEMPERATURE)
 
@@ -84,8 +119,8 @@ embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-
 
 # --- FUNCTIONS ---
 
-# Loads the entire text content from a single document.
-# Returns a list of LangChain Document objects (one per page) and the filename.
+# Loads the entire text content from a single document and returns a list of LangChain Document objects (one per page) and the filename.
+#   the accepted file types are .pdf, .docx, and .txt. If you would like to add more file types, you can add them to the if-elif statements below.
 def load_document_content(filepath):
     loader = None
     if filepath.endswith(".pdf"):
@@ -110,7 +145,7 @@ def load_document_content(filepath):
         return [], None
 
 # Splits a list of LangChain Document objects into smaller chunks.
-# This is used for the guidelines document to create a vector store.
+#    This is used for the guidelines document to create a vector store.
 def split_documents_into_chunks(documents, chunk_size=1000, chunk_overlap=200):
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
@@ -124,8 +159,8 @@ def create_vector_store(chunks, embeddings_model):
     print("Creating vector store...")
     return FAISS.from_documents(chunks, embeddings_model)
 
-# Helper function to retrieve and format relevant guideline chunks.
-# Returns a formatted string of guidelines and a boolean indicating if any were found.
+# Retrieves and formats relevant guideline chunks.
+#     Returns a formatted string of guidelines and a boolean indicating if any were found.
 def get_relevant_guideline_context(query_aspect, guidelines_vectorstore, top_k_value):
     relevant_guidelines_docs = guidelines_vectorstore.similarity_search(query_aspect, k=top_k_value)
 
@@ -141,7 +176,8 @@ def get_relevant_guideline_context(query_aspect, guidelines_vectorstore, top_k_v
     guidelines_context = "\n\n".join(guidelines_context_parts)
     return guidelines_context, True
 
-# --- NEW FUNCTION: LLM-Based Aspect Selection ---
+# =This function uses the LLM to identify which compliance aspects are relevant to a given manual chunk.
+#     if there is a specific aspect you have changed in the manual chunk, you can include it manually after the LLM has selected the relevant aspects.
 def get_llm_relevant_aspects(manual_chunk_content, available_aspects, llm_model):
     aspects_list_str = "\n".join([f"- {a}" for a in available_aspects])
 
@@ -182,20 +218,20 @@ def get_llm_relevant_aspects(manual_chunk_content, available_aspects, llm_model)
         # Parse the newline-separated list
         selected_aspects = [aspect.strip() for aspect in selected_aspects_raw.split('\n')]
 
+        # IF YOU WOULD LIKE A SPECIFIC ASPECT TO BE INCLUDED, you can append it here in selected_aspects.
+
         return selected_aspects
     except Exception as e:
         print(f"Error during LLM aspect selection for chunk: {e}")
         return [] # Return empty list on error
 
-# Checks the compliance of a single manual chunk against guidelines from a vector store,
-# focusing on the specified compliance aspects.
+# Checks the compliance of a single manual chunk against guidelines from a vector store, focusing on the specified compliance aspects.
+#     This is the main function that performs the compliance check for each manual chunk.
+#     It retrieves relevant guidelines for each aspect, constructs a detailed prompt for the LLM, and processes the response.
+#     If you want to modify the prompt or the compliance check logic, you can do so here.
 def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guidelines_vectorstore, llm_model, compliance_aspects_for_this_chunk, top_k_value):
     print(f"\n--- Checking Compliance for Manual Chunk: '{manual_chunk_filename}' ---")
     compliance_report_content = [] # Store parts of the report
-
-    # Combine organization names for context in the prompt
-    org_a_all_names = ", ".join(ORG_A_NAMES)
-    org_b_all_names = ", ".join(ORG_B_NAMES)
 
     # Iterating through each compliance aspect for a targeted check
     if not compliance_aspects_for_this_chunk:
@@ -207,6 +243,7 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
         print(f"  Checking aspect: '{aspect}'...")
 
         # Retrieve relevant sections from the guidelines document based on the aspect query
+        # Use the helper function to get relevant guidelines
         print(f"   Retrieving relevant guidelines for aspect: '{aspect}'...")
         guidelines_context, guidelines_found = get_relevant_guideline_context(aspect, guidelines_vectorstore, top_k_value)
 
@@ -433,26 +470,27 @@ if __name__ == "__main__":
         print(f"Error: No content loaded from guidelines document '{GUIDELINES_DOC_NAME}'. Exiting.")
         exit()
 
-    # Chunk the guidelines for the vector store
+    # --- 2. Chunk the guidelines for the vector store ---
     guidelines_chunks = split_documents_into_chunks(raw_guidelines_docs, chunk_size=700, chunk_overlap=150)
     print("Creating Vector Store For Guidelines Document...")
     guidelines_vectorstore = create_vector_store(guidelines_chunks, embeddings)
     print(f"Guidelines document '{GUIDELINES_DOC_NAME}' processed and indexed into vector store.")
 
+    # --- 3. Setup to call the compliance checker ---
     compiled_reports_list = [] # For the consolidated report
 
     if not LIST_OF_MANUAL_FILES:
         print("Error: LIST_OF_MANUAL_FILES is empty. Please add file paths to process. Exiting.")
         exit()
 
-    output_directory_base = "./OM_compliance_reports"
+    output_directory_base = "./Manual_Lightweight_Tool_Reports" # Base directory for output reports
     os.makedirs(output_directory_base, exist_ok=True)
 
     individual_reports_dir = os.path.join(output_directory_base, "individual_compliance_reports")
     os.makedirs(individual_reports_dir, exist_ok=True)
     print(f"Individual compliance reports will be saved in: {individual_reports_dir}")
 
-
+    # --- 4. Process each manual chunk file and update reports ---
     for chunk_filename_short in LIST_OF_MANUAL_FILES:
         full_filepath = os.path.join(DOCUMENT_LIBRARY_PATH, chunk_filename_short)
 
@@ -523,13 +561,14 @@ if __name__ == "__main__":
 
         print(f"\n{'='*20} End of Analysis for '{loaded_filename}' {'='*20}\n")
 
+    # --- 5. Compile and Save the Consolidated Compliance Report ---
     print("\n--- Full Compiled Compliance Report (Console Preview) ---")
     for chunk_report in compiled_reports_list:
         print(f"\n### Compliance Report for Chunk: {chunk_report['chunk_filename']}\n")
         print(chunk_report["llm_response"])
         print("\n--------------------------------------------------")
 
-    # Save the consolidated compliance report
+    # --- 5. Compile and Save the Consolidated Compliance Report ---
     consolidated_pdf_filename = os.path.join(output_directory_base, f"consolidated_compliance_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
     try:
         write_report_to_pdf(compiled_reports_list, consolidated_pdf_filename)
