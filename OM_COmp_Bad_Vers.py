@@ -13,7 +13,7 @@ from datetime import datetime
 # --- Configuration ---
 DOCUMENT_LIBRARY_PATH = "./operations_manual_chunks/Operational Rules and Procedures"
 
-GUIDELINES_DOC_NAME = "PNC.txt" # Name of your guidelines document
+GUIDELINES_DOC_NAME = "41 PNCA 2025.pdf" # Name of your guidelines document
 
 # -- organization names (used in prompts for context, not for splitting output) --
 ORG_A_NAMES = ["ROPSSA", "Republic of Palau Social Security Administration", "SSA", 
@@ -34,27 +34,44 @@ LIST_OF_MANUAL_FILES = ["section 101-112.docx",
                          "sections 326–330.docx", "sections 401–407.docx", 
                          "sections 501–505.docx", "sections 601–603.docx", 
                          "sections 701–706.docx", "sections 801–807.docx", 
-                         "sections 901–907.docx"]
+                         "sections 901–907.docx"
+    ]
 
 
 # --- Ollama Model Configuration ---
-OLLAMA_LLM_MODEL = "granite3.2:8b" 
+OLLAMA_LLM_MODEL = "mistral:7b-instruct-q4_k_m"
 OLLAMA_EMBEDDING_MODEL = "nomic-embed-text" 
-TOP_K_GUIDELINES = 5 # Number of top relevant guideline chunks to retrieve for each aspect
+TOP_K_GUIDELINES = 7 # Number of top relevant guideline chunks to retrieve for each aspect
 
 # Define specific aspects/questions for targeted compliance checks
 # IMPORTANT: Replace this with actual aspects you want to check!
 COMPLIANCE_ASPECTS_TO_CHECK = [
-   "Data privacy and confidentiality requirements.",
-   "Employee conduct and ethics policies.",
-   "Financial reporting and accountability standards.",
-   "Hiring and termination procedures.",
-   "Benefit eligibility and disbursement rules."
+   "Functions, members, and procedures of the Social Security Board",
+    "Actuarial Soundness and Sustainability",
+    "Fund Reserves and Solvency Requirements",
+    "Audit Requirements and External Oversight",
+    "Duties, functions, appointment of the Social Security Administrator",
+    "Secretaries, managers, and other staff",
+    "Financial reporting and budget",
+    "Governance Structure and Oversight Mechanisms (including the National Healthcare Financing Governing Committee or the “Committee”)",
+    "Enrollment and eligibility criteria",
+    "Data management, security, and information sharing mechanisms and policies",
+    "Appeals and Dispute Resolution Mechanisms",
+    "Beneficiary Rights and Responsibilities",
+    "Investment Policies, Portfolio Management, and Performance Reporting",
+    "Incomes and contributions or payments",
+    "Claims",
+    "Aspects of health insurance, including benefits, exclusions, reimbursements, and subscriptions",
+    "Privacy",
+    "Employee offenses and penalties including fraud, failure to report or pay, false claims",
+    "Enforcement Powers and Sanctions for Non-Compliance (beyond just offenses)",
+    "Succession and transfer of medical savings account after death",
+    "The keeping of accounts and reports"
 ]
 
 # --- INITIALIZATION ---
 print(f"Initializing LLM with Ollama model: {OLLAMA_LLM_MODEL}")
-llm = OllamaLLM(model=OLLAMA_LLM_MODEL, temperature=0.1) 
+llm = OllamaLLM(model=OLLAMA_LLM_MODEL, temperature=0.2) 
 
 print(f"Initializing Embeddings with Ollama model: {OLLAMA_EMBEDDING_MODEL}")
 embeddings = OllamaEmbeddings(model=OLLAMA_EMBEDDING_MODEL)
@@ -132,10 +149,6 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
     """
     print(f"\n--- Checking Compliance for Manual Chunk: '{manual_chunk_filename}' ---")
     compliance_report_content = [] 
-
-    # Combine organization names for context in the prompt
-    org_a_all_names = ", ".join(ORG_A_NAMES)
-    org_b_all_names = ", ".join(ORG_B_NAMES)
 
     # Iterating through each compliance aspect for a targeted check
     if not compliance_aspects:
