@@ -1,21 +1,38 @@
+# Create a Vector Store for Compliance Aspects: 
+#   embed COMPLIANCE_ASPECTS_TO_CHECK list into a FAISS vector store.
+# Filter Aspects per Manual Chunk: 
+#   For each manual_chunk_full_text, we'll use its embedding to find the most relevant 
+#   compliance aspects from your predefined list.
+# Targeted LLM Calls: 
+#   The check_manual_compliance function will then only be called for these pre-filtered, 
+#   relevant aspects, significantly reducing the chances of the LLM trying to find relevance 
+#   where none exists.
+
 import os
+import re
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_ollama import OllamaLLM 
-from langchain_community.embeddings import OllamaEmbeddings
+from langchain_openai import ChatOpenAI
+from langchain_community.embeddings import HuggingFaceEmbeddings
+
 from langchain_community.vectorstores import FAISS
 from langchain.docstore.document import Document
 
 from fpdf import FPDF
-from datetime import datetime
+from datetime import datetime # Kept only this one
+import time
 
 # --- SETUP ---
+print("Starting ROPSSA Operations Manual Compliance Checker...")
 
-# --- Ollama Model Configuration ---
-OLLAMA_LLM_MODEL = "mistral:7b-instruct-q4_k_m"
-OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
-TOP_K_GUIDELINES = 5
-TEMPERATURE = 0.1
+TOP_K_GUIDELINES = 5 # Number of top guidelines to retrieve for an aspect
+TEMPERATURE = 0.1    # LLM temperature for creative/randomness in responses
+
+# Number of top compliance aspects to consider for each manual chunk
+# This helps filter down the broad list to only what's relevant to the chunk.
+TOP_K_RELEVANT_ASPECTS_PER_CHUNK = 3 
+# You might want to tune this. Too low, and you miss things. Too high, and you might still get irrelevant aspects.
+# Alternatively, you could use a similarity threshold instead of a fixed k.
 
 # --- Configuration ---
 DOCUMENT_LIBRARY_PATH = "./operations_manual_chunks/Operational Rules and Procedures"
@@ -29,24 +46,24 @@ ORG_B_NAMES = ["HCF", "Health Care Fund", "Republic of Palau Health Care Fund",
 
 # -- list of directory paths to the individual files --
 LIST_OF_MANUAL_FILES = ["section 101-112.docx",
-                         "section 201-202.docx", "section 203–204.docx", 
-                         "section 205–206.5.docx", "section 304.docx", 
-                         "section 323-325.docx", "section 506-510.docx", 
-                         "section 707-711.docx", "sections 206.5A–206.5B.docx", 
-                         "sections 207–213.docx", "sections 214–215.docx", 
-                         "sections 216–218.docx", "sections 219–220.docx", 
-                         "sections 301–303.docx", "sections 305–309.docx", 
-                         "sections 310–317.docx", "sections 318–322.docx", 
-                         "sections 326–330.docx", "sections 401–407.docx", 
-                         "sections 501–505.docx", "sections 601–603.docx", 
-                         "sections 701–706.docx", "sections 801–807.docx", 
-                         "sections 901–907.docx"]
+                        "section 201-202.docx", "section 203–204.docx", 
+                        "section 205–206.5.docx", "section 304.docx", 
+                        "section 323-325.docx", "section 506-510.docx", 
+                        "section 707-711.docx", "sections 206.5A–206.5B.docx", 
+                        "sections 207–213.docx", "sections 214–215.docx", 
+                        "sections 216–218.docx", "sections 219–220.docx", 
+                        "sections 301–303.docx", "sections 305–309.docx", 
+                        "sections 310–317.docx", "sections 318–322.docx", 
+                        "sections 326–330.docx", "sections 401–407.docx", 
+                        "sections 501–505.docx", "sections 601–603.docx", 
+                        "sections 701–706.docx", "sections 801–807.docx", 
+                        "sections 901–907.docx"
+                       ]
 
 
 # Define specific aspects/questions for targeted compliance checks
 # These are broader themes that the LLM will focus on when comparing to guidelines
-# Replace this with actual aspects you want to check!
-COMPLIANCE_ASPECTS_TO_CHECK = ["Establishment and Legal Basis of the Social Security Board and Healthcare Financing System",
+COMPLIANCE_ASPECTS_TO_CHECK = [
         "Functions, members, and procedures of the Social Security Board",
         "Actuarial Soundness and Sustainability",
         "Fund Reserves and Solvency Requirements",
@@ -71,11 +88,21 @@ COMPLIANCE_ASPECTS_TO_CHECK = ["Establishment and Legal Basis of the Social Secu
 ]
 
 # --- INITIALIZATION ---
-print(f"Initializing LLM with Ollama model: {OLLAMA_LLM_MODEL}")
-llm = OllamaLLM(model=OLLAMA_LLM_MODEL, temperature=TEMPERATURE)
+lm_studio_base_url = "http://localhost:1234/v1"
+print(f"Initializing LLM with LM Studio (local OpenAI-compatible API) from: {lm_studio_base_url}")
+llm = ChatOpenAI(base_url = lm_studio_base_url, api_key="lm-studio", model="local-model",temperature = TEMPERATURE)
 
-print(f"Initializing Embeddings with Ollama model: {OLLAMA_EMBEDDING_MODEL}")
-embeddings = OllamaEmbeddings(model=OLLAMA_EMBEDDING_MODEL)
+print(f"Initializing Embeddings with CPU-Based HuggingFaceEmbeddings.")
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", model_kwargs={"device": "cpu"})
+
+# NEW: Create a vector store for the compliance aspects themselves
+# This allows us to quickly find which aspects are most relevant to a given manual chunk.
+print("Creating Vector Store for Compliance Aspects...")
+# Convert compliance aspects to LangChain Document objects for FAISS
+aspect_docs = [Document(page_content=aspect) for aspect in COMPLIANCE_ASPECTS_TO_CHECK]
+aspects_vectorstore = FAISS.from_documents(aspect_docs, embeddings)
+print("Compliance Aspects indexed into vector store.")
+
 
 # -- FUNCTIONS --
 
@@ -138,7 +165,7 @@ def get_relevant_guideline_context(query_aspect, guidelines_vectorstore, top_k_v
 
 # Checks the compliance of a single manual chunk against guidelines from a vector store,
 # focusing on the specified compliance aspects.
-def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guidelines_vectorstore, llm_model, compliance_aspects, top_k_value):
+def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guidelines_vectorstore, llm_model, compliance_aspects_for_this_chunk, top_k_value):
     print(f"\n--- Checking Compliance for Manual Chunk: '{manual_chunk_filename}' ---")
     compliance_report_content = [] # Store parts of the report
 
@@ -147,16 +174,16 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
     org_b_all_names = ", ".join(ORG_B_NAMES)
 
     # Iterating through each compliance aspect for a targeted check
-    if not compliance_aspects:
-        compliance_report_content.append("No specific compliance aspects defined. Cannot perform targeted checks.")
-        print("No specific compliance aspects defined.")
+    if not compliance_aspects_for_this_chunk: # Renamed parameter
+        compliance_report_content.append("No specific compliance aspects found as relevant to this manual chunk. Cannot perform targeted checks.")
+        print("No specific compliance aspects found as relevant.")
         return "\n".join(compliance_report_content)
 
-    for aspect in compliance_aspects:
+    for aspect in compliance_aspects_for_this_chunk: # Iterate over the pre-filtered aspects
         print(f"  Checking aspect: '{aspect}'...")
         
         # Retrieve relevant sections from the guidelines document based on the aspect query
-       # Use the helper function to get relevant guidelines
+        print(f"   Retrieving relevant guidelines for aspect: '{aspect}'...")
         guidelines_context, guidelines_found = get_relevant_guideline_context(aspect, guidelines_vectorstore, top_k_value)
         
         if not guidelines_found:
@@ -176,10 +203,11 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
         1.  **Compliance Status:** Begin your response for this aspect with one of the following:
             * **COMPLIANT:** If the manual chunk fully meets the guideline.
             * **NON-COMPLIANT:** If the manual chunk clearly violates or contradicts the guideline.
-            * **PARTIALLY COMPLIANT:** If the manual chunk addresses the guideline but has gaps, ambiguities, or partial adherence.
-            * **NOT ADDRESSED:** If the manual chunk does not mention or cover this guideline aspect at all.
+            * * **PARTIALLY COMPLIANT:** If the manual chunk *attempts to address* the guideline but does so incompletely, vaguely, or with minor deficiencies that prevent full adherence.
+            * **NOT ADDRESSED:** If the 'Operations Manual Chunk' **does not contain sufficient information or discussion relevant to this specific guideline aspect**, or if the aspect is entirely absent from the manual's content. Do not use 'PARTIALLY COMPLIANT' if the manual simply lacks content on the topic.
+
         2.  **Explanation & Reasoning:** Provide a concise, objective explanation for your status determination.
-        3.  **Verbatim Citations (Crucial):** You MUST cite specific, verbatim phrases or sentences from **both** the 'Operations Manual Chunk' and the 'Relevant Guidelines' to support your reasoning. For each citation, include its original source (e.g., "Manual: '...' (from Section X.Y)", "Guideline: '...' (from Page Z)"). These citations are paramount for traceability.
+        3.  **Verbatim Citations (Crucial):** You MUST cite specific, verbatim phrases or sentences from **both** the 'Operations Manual Chunk' and the 'Relevant Guidelines' to support your reasoning. For each citation, include its original source (e.g., "Manual: '...' (from Section X.Y)", "Guideline: '...' (from Page Z)"). These citations are paramount for traceability. If no direct citation from the manual can be found to support a compliance claim for 'COMPLIANT' or 'NON-COMPLIANT', consider if it is 'NOT ADDRESSED'.
 
         **Operations Manual Chunk for Evaluation (from {manual_chunk_filename}):**
         ---
@@ -196,8 +224,12 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
         # --- End of LLM Prompt ---
 
         try:
+            start_time = time.time()
+            print(f"    Prompting LLM for compliance analysis on aspect: '{aspect}'...")
             response = llm_model.invoke(prompt)
-            compliance_report_content.append(f"\n**Compliance Aspect: {aspect}**\n{response.strip()}")
+            elapsed = time.time() - start_time
+            print(f"    Compliance LLM call took {elapsed:.2f} seconds.")
+            compliance_report_content.append(f"\n**Compliance Aspect: {aspect}**\n{response.content.strip()}")
         except Exception as e:
             compliance_report_content.append(f"\n**Compliance Aspect: {aspect}**\n  - Error during analysis: {e}")
             print(f"  Error analyzing aspect '{aspect}' for '{manual_chunk_filename}': {e}")
@@ -216,25 +248,25 @@ def write_report_to_pdf(report_data, output_filepath):
     bolditalic_font_path = os.path.join(font_dir, "NotoSans-BoldItalic.ttf")
 
     if os.path.exists(regular_font_path):
-        pdf.add_font("NotoSans", "", regular_font_path)
+        pdf.add_font("NotoSans", "", regular_font_path, uni=True)
     else:
         print(f"Warning: NotoSans-Regular.ttf not found at {regular_font_path}. Using default font.")
     if os.path.exists(italic_font_path):
-        pdf.add_font("NotoSans", "I", italic_font_path)
+        pdf.add_font("NotoSans", "I", italic_font_path, uni=True)
     if os.path.exists(bold_font_path):
-        pdf.add_font("NotoSans", "B", bold_font_path)
+        pdf.add_font("NotoSans", "B", bold_font_path, uni=True)
     if os.path.exists(bolditalic_font_path):
-        pdf.add_font("NotoSans", "BI", bolditalic_font_path)
+        pdf.add_font("NotoSans", "BI", bolditalic_font_path, uni=True)
 
     pdf.add_page()
     try:
         pdf.set_font("NotoSans", "BI", 20)
     except:
         pdf.set_font("Helvetica", "B", 20)
-    pdf.multi_cell(0, 12, "ROPSSA Operations Manuals - Compliance Report", align='C') # Changed title
+    pdf.multi_cell(0, 12, "ROPSSA Operations Manuals - Consolidated Compliance Report", align='C') 
     pdf.ln(15)
 
-    for chunk_info in report_data: # Iterate over the list of results
+    for chunk_info in report_data: 
         chunk_filename = chunk_info["chunk_filename"] 
         llm_response_content = chunk_info["llm_response"]
 
@@ -244,15 +276,38 @@ def write_report_to_pdf(report_data, output_filepath):
             pdf.set_font("NotoSans", "B", 16)
         except:
             pdf.set_font("Helvetica", "B", 16)
-        pdf.multi_cell(0, 10, f"Compliance Analysis for Manual Chunk: {chunk_filename}", 0, 'L') # Changed title
+        pdf.multi_cell(0, 10, f"Compliance Analysis for Manual Chunk: {chunk_filename}", 0, 'L') 
         pdf.ln(4)
 
-        try:
-            pdf.set_font("NotoSans", "", 11)
-        except:
-            pdf.set_font("Helvetica", "", 11)
-        pdf.multi_cell(0, 6, llm_response_content.strip())
-        pdf.ln(8)
+        aspect_sections = re.split(r'(\n\*\*Compliance Aspect:.*? \*\*)\n', llm_response_content, flags=re.DOTALL)
+        
+        if aspect_sections and aspect_sections[0].strip():
+            try:
+                pdf.set_font("NotoSans", "", 11) 
+            except:
+                pdf.set_font("Helvetica", "", 11)
+            pdf.multi_cell(0, 6, aspect_sections[0].strip())
+
+        for i in range(1, len(aspect_sections), 2): 
+            header = aspect_sections[i].strip()
+            content = aspect_sections[i+1].strip() if i+1 < len(aspect_sections) else ""
+
+            pdf.ln(4) 
+            try:
+                pdf.set_font("NotoSans", "B", 12) 
+            except:
+                pdf.set_font("Helvetica", "B", 12)
+            pdf.multi_cell(0, 7, header) 
+            pdf.ln(2) 
+
+            try:
+                pdf.set_font("NotoSans", "", 11)
+            except:
+                pdf.set_font("Helvetica", "", 11)
+            pdf.multi_cell(0, 6, content)
+            pdf.ln(4) 
+
+        pdf.ln(8) 
 
         try:
             pdf.set_font("NotoSans", "I", 9)
@@ -274,27 +329,52 @@ def write_individual_response_to_pdf(llm_response_content, original_filename, ou
     bolditalic_font_path = os.path.join(font_dir, "NotoSans-BoldItalic.ttf")
 
     if os.path.exists(regular_font_path):
-        pdf.add_font("NotoSans", "", regular_font_path)
+        pdf.add_font("NotoSans", "", regular_font_path, uni=True)
     if os.path.exists(italic_font_path):
-        pdf.add_font("NotoSans", "I", italic_font_path)
+        pdf.add_font("NotoSans", "I", italic_font_path, uni=True)
     if os.path.exists(bold_font_path):
-        pdf.add_font("NotoSans", "B", bold_font_path)
+        pdf.add_font("NotoSans", "B", bold_font_path, uni=True)
     if os.path.exists(bolditalic_font_path):
-        pdf.add_font("NotoSans", "BI", bolditalic_font_path)
+        pdf.add_font("NotoSans", "BI", bolditalic_font_path, uni=True)
 
     pdf.add_page()
     try:
-        pdf.set_font("NotoSans", "BI", 18) # Slightly smaller font for individual reports title
+        pdf.set_font("NotoSans", "BI", 18) 
     except:
         pdf.set_font("Helvetica", "B", 18)
-    pdf.multi_cell(0, 10, f"Compliance Analysis for: {original_filename}", align='C') # Changed title
+    pdf.multi_cell(0, 10, f"Compliance Analysis for: {original_filename}", align='C') 
     pdf.ln(10)
 
-    try:
-        pdf.set_font("NotoSans", "", 10)
-    except:
-        pdf.set_font("Helvetica", "", 10)
-    pdf.multi_cell(0, 6, llm_response_content.strip())
+    # --- MODIFIED: Apply formatting to aspect headers in individual reports ---
+    aspect_sections = re.split(r'(\n\*\*Compliance Aspect:.*? \*\*)\n', llm_response_content, flags=re.DOTALL)
+    
+    if aspect_sections and aspect_sections[0].strip():
+        try:
+            pdf.set_font("NotoSans", "", 10)
+        except:
+            pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 6, aspect_sections[0].strip())
+
+    for i in range(1, len(aspect_sections), 2):
+        header = aspect_sections[i].strip()
+        content = aspect_sections[i+1].strip() if i+1 < len(aspect_sections) else ""
+
+        pdf.ln(4)
+        try:
+            pdf.set_font("NotoSans", "B", 11) 
+        except:
+            pdf.set_font("Helvetica", "B", 11)
+        pdf.multi_cell(0, 6, header)
+        pdf.ln(2)
+
+        try:
+            pdf.set_font("NotoSans", "", 10)
+        except:
+            pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 6, content)
+        pdf.ln(4)
+    # --- END MODIFIED ---
+
     pdf.ln(5) 
 
     try:
@@ -304,7 +384,7 @@ def write_individual_response_to_pdf(llm_response_content, original_filename, ou
 
 
 # --- Main Program Logic ---
-if __name__ == "__main__":
+if __name__ == "__main__": 
     if not os.path.exists(DOCUMENT_LIBRARY_PATH):
         os.makedirs(DOCUMENT_LIBRARY_PATH)
         print(f"Created directory: {DOCUMENT_LIBRARY_PATH}")
@@ -331,6 +411,7 @@ if __name__ == "__main__":
 
     # Chunk the guidelines for the vector store
     guidelines_chunks = split_documents_into_chunks(raw_guidelines_docs, chunk_size=700, chunk_overlap=150) # Adjust chunking for guidelines
+    print("Creating Vector Store For Guidelines Document...")
     guidelines_vectorstore = create_vector_store(guidelines_chunks, embeddings)
     print(f"Guidelines document '{GUIDELINES_DOC_NAME}' processed and indexed into vector store.")
 
@@ -353,7 +434,6 @@ if __name__ == "__main__":
         full_filepath = os.path.join(DOCUMENT_LIBRARY_PATH, chunk_filename_short)
         
         # Load the content of the current manual chunk
-        # load_document_content returns a list of Document objects (one per page of the chunk file)
         current_manual_chunk_docs, loaded_filename = load_document_content(full_filepath)
 
         if not current_manual_chunk_docs: # Check if list is empty
@@ -365,15 +445,43 @@ if __name__ == "__main__":
 
         print(f"Manual Chunk {loaded_filename} loaded with {len(manual_chunk_full_text)} characters.")
 
+        print(f"\n--- Identifying Relevant Aspects for {loaded_filename} ---")
+        # NEW: Find the most relevant compliance aspects for the current manual chunk
+        # Embed the manual chunk text to query the aspects vector store
+        manual_chunk_embedding_query = manual_chunk_full_text 
+        relevant_aspect_docs = aspects_vectorstore.similarity_search(manual_chunk_embedding_query, k=TOP_K_RELEVANT_ASPECTS_PER_CHUNK)
+        
+        # Extract just the aspect strings from the retrieved documents
+        relevant_aspects_for_this_chunk = [doc.page_content for doc in relevant_aspect_docs]
+
+        if not relevant_aspects_for_this_chunk:
+            print(f"No relevant compliance aspects found for '{loaded_filename}' based on similarity search. Skipping compliance check for this chunk.")
+            compliance_result_text = f"No relevant compliance aspects found for '{loaded_filename}' based on similarity search."
+            compiled_reports_list.append({"chunk_filename": loaded_filename, "llm_response": compliance_result_text})
+            # Save an empty/placeholder individual report for completeness
+            base_name = os.path.splitext(loaded_filename)[0]
+            individual_pdf_output_filename = os.path.join(individual_reports_dir, f"compliance_report_for_{base_name}.pdf")
+            write_individual_response_to_pdf(
+                compliance_result_text, 
+                loaded_filename, 
+                individual_pdf_output_filename
+            )
+            continue
+
+
+        print(f"Identified relevant aspects for '{loaded_filename}':")
+        for aspect in relevant_aspects_for_this_chunk:
+            print(f" - {aspect}")
+
         print(f"\n--- Starting Compliance Analysis for {loaded_filename} ---")
 
-        # Perform compliance check
+        # Perform compliance check ONLY with the identified relevant aspects
         compliance_result_text = check_manual_compliance(
             manual_chunk_full_text, 
             loaded_filename, 
             guidelines_vectorstore, 
             llm, 
-            COMPLIANCE_ASPECTS_TO_CHECK,
+            relevant_aspects_for_this_chunk, # Pass the filtered list
             TOP_K_GUIDELINES
         )
 

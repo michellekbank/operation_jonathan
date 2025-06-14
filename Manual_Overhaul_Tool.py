@@ -1,33 +1,63 @@
+# Designed by: Michelle Bank and Carter Musheno
+# Programmed and developed by: Michelle Bank
+#     for assistance, please contact: mbank@andrew.cmu.edu
+
+#     By the MOU signed by the appropriate parties including the student consultant and representatives from ROPSSA/HCF and Carnegie Mellon, this 
+#     program is intellectual property of Michelle Bank and Carter Musheno. ROPSSA and HCF have a worldwide, non-exclusive, royalty-free right and license to copy,
+#     modify, publish, distribute, and otherwise use the program and its documentation for purposes consistent with ROPSSA and HCF's mission and 
+#     status as an agency.
+
+#     This program is designed to be used by ROPSSA & HCF for the purpose of checking compliance of the Operations Manual and other various documents
+#     against a set of guidelines.
+
+# Description: This script is designed to perform a *complete* overhaul of documents or manuals against a set of guidelines.
+#     It loads multiple sections of an operations manual, checks each section against a set of compliance aspects derived from a guidelines document.
+# Intented Use: It is designed to be used when a very thorough check against the entirity of the guidelines is necessary. This means it is good for document
+#     overhauls and for when new sections are written or added.
+#     Therefore, runtime for this script is expected to be longer than the other versions, as it processes multiple files and performs a more 
+#     thorough compliance check. It is best to be used in an overnight run or similar long-duration task, as it processes multiple files 
+#     and performs extensive LLM prompts for each compliance aspect.
+
+# Troubleshooting: If you encounter issues with the script, please check the following:
+#   1. Ensure that the LM Studio is running and accessible at the specified base URL.
+#   2. Ensure that the guidelines document and manual files are present in the specified directories.
+#   3. Ensure that the required Python packages are installed and up-to-date.
+#   4. If you encounter any errors, please check the console output for debugging messages and error messages.
+
+# --- import necessary libraries ---
 import os
+import re
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_ollama import OllamaLLM 
-from langchain_community.embeddings import OllamaEmbeddings
+from langchain_openai import ChatOpenAI
+from langchain_community.embeddings import HuggingFaceEmbeddings
+
 from langchain_community.vectorstores import FAISS
-from langchain.docstore.document import Document
 
 from fpdf import FPDF
+import datetime
 from datetime import datetime
+import time
 
-# --- SETUP ---
+print("Starting Compliance Checker...") # Debugging message to indicate the script has started
 
-# --- Ollama Model Configuration ---
-OLLAMA_LLM_MODEL = "mistral:7b-instruct-q4_k_m"
-OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
-TOP_K_GUIDELINES = 5
-TEMPERATURE = 0.1
+# --- Configuration Parameters ---
+# These parameters can be adjusted based on the specific requirements of the compliance check
+TOP_K_GUIDELINES = 5 # This is the number of top relevant guideline chunks to retrieve for each compliance aspect check
+TEMPERATURE = 0.1 # This controls the randomness of the LLM's responses. Lower values make it more deterministic and less creative.
+# if you want more creative responses, you can increase this value (e.g., 0.5 or 0.7), but for compliance checks, a lower value is usually better.
 
 # --- Configuration ---
 DOCUMENT_LIBRARY_PATH = "./operations_manual_chunks/Operational Rules and Procedures"
 
 GUIDELINES_DOC_NAME = "41 PNCA 2025.pdf" # Name of your guidelines document
-# -- organization names --
-ORG_A_NAMES = ["ROPSSA", "Republic of Palau Social Security Administration", "SSA", 
-               "Social Security Administration", "Social Security"]
-ORG_B_NAMES = ["HCF", "Health Care Fund", "Republic of Palau Health Care Fund", 
-               "Healthcare Fund", "ROPHCF"]
 
 # -- list of directory paths to the individual files --
+
+# This is a list of the manual files to be processed. Each file should be in the DOCUMENT_LIBRARY_PATH directory.
+    # additionally, the files should be in the format of .docx, .pdf, or .txt.
+    # the files should also be around 5000 characters or less in length, as the LLM can handle up to 8000 characters per prompt.
+    # Longer files may result in suboptimal performance or errors.
 LIST_OF_MANUAL_FILES = ["section 101-112.docx",
                          "section 201-202.docx", "section 203–204.docx", 
                          "section 205–206.5.docx", "section 304.docx", 
@@ -40,13 +70,14 @@ LIST_OF_MANUAL_FILES = ["section 101-112.docx",
                          "sections 326–330.docx", "sections 401–407.docx", 
                          "sections 501–505.docx", "sections 601–603.docx", 
                          "sections 701–706.docx", "sections 801–807.docx", 
-                         "sections 901–907.docx"]
+                         "sections 901–907.docx"
+                        ]
 
 
-# Define specific aspects/questions for targeted compliance checks
-# These are broader themes that the LLM will focus on when comparing to guidelines
-# Replace this with actual aspects you want to check!
-COMPLIANCE_ASPECTS_TO_CHECK = ["Establishment and Legal Basis of the Social Security Board and Healthcare Financing System",
+# Define specific aspects for targeted compliance checks. This is a list of compliance aspects that the LLM will check against the guidelines.
+#     These aspects are derived from the guidelines document and represent key areas of compliance that need to be verified.
+#     The LLM will analyze each manual chunk against these aspects and provide a compliance report.
+COMPLIANCE_ASPECTS_TO_CHECK = [
         "Functions, members, and procedures of the Social Security Board",
         "Actuarial Soundness and Sustainability",
         "Fund Reserves and Solvency Requirements",
@@ -56,6 +87,9 @@ COMPLIANCE_ASPECTS_TO_CHECK = ["Establishment and Legal Basis of the Social Secu
         "Financial reporting and budget",
         "Governance Structure and Oversight Mechanisms (including the National Healthcare Financing Governing Committee or the “Committee”)",
         "Enrollment and eligibility criteria",
+        "Medically Determinable Impairment",
+        "Acceptable Medical Sources for Evidence",
+        "Disability Determination",
         "Data management, security, and information sharing mechanisms and policies",
         "Appeals and Dispute Resolution Mechanisms",
         "Beneficiary Rights and Responsibilities",
@@ -70,17 +104,20 @@ COMPLIANCE_ASPECTS_TO_CHECK = ["Establishment and Legal Basis of the Social Secu
         "The keeping of accounts and reports"
 ]
 
-# --- INITIALIZATION ---
-print(f"Initializing LLM with Ollama model: {OLLAMA_LLM_MODEL}")
-llm = OllamaLLM(model=OLLAMA_LLM_MODEL, temperature=TEMPERATURE)
+# --- INITIALIZATION OF LLM ---
 
-print(f"Initializing Embeddings with Ollama model: {OLLAMA_EMBEDDING_MODEL}")
-embeddings = OllamaEmbeddings(model=OLLAMA_EMBEDDING_MODEL)
+# Ensure the model is running in LM studio on your computer
+lm_studio_base_url = "http://localhost:1234/v1"  # Default LM Studio URL. Depending on your setup, you may need to change this. Check LM Studio settings.
+print(f"Initializing LLM with LM Studio (local OpenAI-compatible API) from: {lm_studio_base_url}")
+llm = ChatOpenAI(base_url = lm_studio_base_url, api_key="lm-studio", model="local-model",temperature = TEMPERATURE)
+
+print(f"Initializing Embeddings with GPU-Based HuggingFaceEmbeddings.")
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", model_kwargs={"device": "gpu" if llm._device == "cuda" else "cpu"})
 
 # -- FUNCTIONS --
 
-# Loads the entire text content from a single document.
-# Returns a list of LangChain Document objects (one per page) and the filename.
+# Loads the entire text content from a single document and returns a list of LangChain Document objects (one per page) and the filename.
+#   the accepted file types are .pdf, .docx, and .txt. If you would like to add more file types, you can add them to the if-elif statements below.
 def load_document_content(filepath):
     loader = None
     if filepath.endswith(".pdf"):
@@ -105,7 +142,7 @@ def load_document_content(filepath):
         return [], None
 
 # Splits a list of LangChain Document objects into smaller chunks.
-# This is used for the guidelines document to create a vector store.
+#    This is used for the guidelines document to create a vector store.
 def split_documents_into_chunks(documents, chunk_size=1000, chunk_overlap=200):
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
@@ -120,7 +157,7 @@ def create_vector_store(chunks, embeddings_model):
     return FAISS.from_documents(chunks, embeddings_model)
 
 # Helper function to retrieve and format relevant guideline chunks.
-# Returns a formatted string of guidelines and a boolean indicating if any were found.
+#     Returns a formatted string of guidelines and a boolean indicating if any were found.
 def get_relevant_guideline_context(query_aspect, guidelines_vectorstore, top_k_value):
     relevant_guidelines_docs = guidelines_vectorstore.similarity_search(query_aspect, k=top_k_value) 
     
@@ -136,15 +173,13 @@ def get_relevant_guideline_context(query_aspect, guidelines_vectorstore, top_k_v
     guidelines_context = "\n\n".join(guidelines_context_parts)
     return guidelines_context, True
 
-# Checks the compliance of a single manual chunk against guidelines from a vector store,
-# focusing on the specified compliance aspects.
+# Checks the compliance of a single manual chunk against guidelines from a vector store, focusing on the specified compliance aspects.
+#     This is the main function that performs the compliance check for each manual chunk.
+#     It retrieves relevant guidelines for each aspect, constructs a detailed prompt for the LLM, and processes the response.
+#     If you want to modify the prompt or the compliance check logic, you can do so here.
 def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guidelines_vectorstore, llm_model, compliance_aspects, top_k_value):
     print(f"\n--- Checking Compliance for Manual Chunk: '{manual_chunk_filename}' ---")
     compliance_report_content = [] # Store parts of the report
-
-    # Combine organization names for context in the prompt
-    org_a_all_names = ", ".join(ORG_A_NAMES)
-    org_b_all_names = ", ".join(ORG_B_NAMES)
 
     # Iterating through each compliance aspect for a targeted check
     if not compliance_aspects:
@@ -156,7 +191,8 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
         print(f"  Checking aspect: '{aspect}'...")
         
         # Retrieve relevant sections from the guidelines document based on the aspect query
-       # Use the helper function to get relevant guidelines
+        # Use the helper function to get relevant guidelines
+        print(f"   Retrieving relevant guidelines for aspect: '{aspect}'...")
         guidelines_context, guidelines_found = get_relevant_guideline_context(aspect, guidelines_vectorstore, top_k_value)
         
         if not guidelines_found:
@@ -167,37 +203,41 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
             continue
 
         # --- LLM Prompt for Compliance Check ---
-        prompt = f"""
-        You are a highly analytical compliance officer. Your task is to meticulously evaluate whether the
-        'Operations Manual Chunk' explicitly complies with the 'Relevant Guidelines' provided,
-        specifically focusing on the aspect: "{aspect}".
+        prompt = f"""You are a highly analytical compliance officer. Your task is to meticulously evaluate whether the
+            'Operations Manual Chunk' explicitly complies with the 'Relevant Guidelines' provided,
+            specifically focusing on the aspect: "{aspect}".
 
-        **CRITICAL INSTRUCTIONS FOR ANALYSIS AND REPORTING:**
-        1.  **Compliance Status:** Begin your response for this aspect with one of the following:
-            * **COMPLIANT:** If the manual chunk fully meets the guideline.
-            * **NON-COMPLIANT:** If the manual chunk clearly violates or contradicts the guideline.
-            * **PARTIALLY COMPLIANT:** If the manual chunk addresses the guideline but has gaps, ambiguities, or partial adherence.
-            * **NOT ADDRESSED:** If the manual chunk does not mention or cover this guideline aspect at all.
-        2.  **Explanation & Reasoning:** Provide a concise, objective explanation for your status determination.
-        3.  **Verbatim Citations (Crucial):** You MUST cite specific, verbatim phrases or sentences from **both** the 'Operations Manual Chunk' and the 'Relevant Guidelines' to support your reasoning. For each citation, include its original source (e.g., "Manual: '...' (from Section X.Y)", "Guideline: '...' (from Page Z)"). These citations are paramount for traceability.
+            **CRITICAL INSTRUCTIONS FOR ANALYSIS AND REPORTING:**
+            1.  **Compliance Status:** Begin your response for this aspect with one of the following:
+                * **COMPLIANT:** If the manual chunk fully meets the guideline.
+                * **NON-COMPLIANT:** If the manual chunk clearly violates or contradicts the guideline.
+                * **PARTIALLY COMPLIANT:** If the manual chunk *attempts to address* the guideline but does so incompletely, vaguely, or with minor deficiencies that prevent full adherence.
+                * **NOT ADDRESSED:** If the 'Operations Manual Chunk' **does not contain sufficient information or discussion relevant to this specific guideline aspect**, or if the aspect is entirely absent from the manual's content. Do not use 'PARTIALLY COMPLIANT' if the manual simply lacks content on the topic.
 
-        **Operations Manual Chunk for Evaluation (from {manual_chunk_filename}):**
-        ---
-        {manual_chunk_full_text}
-        ---
+            2.  **Explanation & Reasoning:** In all cases OTHER THAN "NOT ADDRESSED," provide a concise, objective explanation for your status determination. SKIP THIS STEP AND DO NOT ADD EXPLANATION WHEN THE ASPECT IS NOT ADDRESSED.
+            3.  **Verbatim Citations (Crucial):** You MUST cite specific, verbatim phrases or sentences from **both** the 'Operations Manual Chunk' and the 'Relevant Guidelines' to support your reasoning. For each citation, include its original source (e.g., "Manual: '...' (from Section X.Y)", "Guideline: '...' (from Page Z)"). These citations are paramount for traceability. If no direct citation from the manual can be found to support a compliance claim for 'COMPLIANT' or 'NON-COMPLIANT', consider the possibility that it is 'NOT ADDRESSED'.
 
-        **Relevant Guidelines (related to '{aspect}'):**
-        ---
-        {guidelines_context}
-        ---
+            **Operations Manual Chunk for Evaluation (from {manual_chunk_filename}):**
+            ---
+            {manual_chunk_full_text}
+            ---
 
-        **Compliance Analysis for Aspect: "{aspect}"**
+            **Relevant Guidelines (related to '{aspect}'):**
+            ---
+            {guidelines_context}
+            ---
+
+            **Compliance Analysis for Aspect: "{aspect}"**
         """
         # --- End of LLM Prompt ---
-
+        
         try:
+            start_time = time.time()
+            print(f"    Prompting LLM for compliance analysis on aspect: '{aspect}'...")
             response = llm_model.invoke(prompt)
-            compliance_report_content.append(f"\n**Compliance Aspect: {aspect}**\n{response.strip()}")
+            elapsed = time.time() - start_time
+            print(f"    Compliance LLM call took {elapsed:.2f} seconds.")
+            compliance_report_content.append(f"\n**Compliance Aspect: {aspect}**\n{response.content.strip()}")
         except Exception as e:
             compliance_report_content.append(f"\n**Compliance Aspect: {aspect}**\n  - Error during analysis: {e}")
             print(f"  Error analyzing aspect '{aspect}' for '{manual_chunk_filename}': {e}")
@@ -216,15 +256,15 @@ def write_report_to_pdf(report_data, output_filepath):
     bolditalic_font_path = os.path.join(font_dir, "NotoSans-BoldItalic.ttf")
 
     if os.path.exists(regular_font_path):
-        pdf.add_font("NotoSans", "", regular_font_path)
+        pdf.add_font("NotoSans", "", regular_font_path, uni=True)
     else:
         print(f"Warning: NotoSans-Regular.ttf not found at {regular_font_path}. Using default font.")
     if os.path.exists(italic_font_path):
-        pdf.add_font("NotoSans", "I", italic_font_path)
+        pdf.add_font("NotoSans", "I", italic_font_path, uni=True)
     if os.path.exists(bold_font_path):
-        pdf.add_font("NotoSans", "B", bold_font_path)
+        pdf.add_font("NotoSans", "B", bold_font_path, uni=True)
     if os.path.exists(bolditalic_font_path):
-        pdf.add_font("NotoSans", "BI", bolditalic_font_path)
+        pdf.add_font("NotoSans", "BI", bolditalic_font_path, uni=True)
 
     pdf.add_page()
     try:
@@ -247,11 +287,34 @@ def write_report_to_pdf(report_data, output_filepath):
         pdf.multi_cell(0, 10, f"Compliance Analysis for Manual Chunk: {chunk_filename}", 0, 'L') # Changed title
         pdf.ln(4)
 
-        try:
-            pdf.set_font("NotoSans", "", 11)
-        except:
-            pdf.set_font("Helvetica", "", 11)
-        pdf.multi_cell(0, 6, llm_response_content.strip())
+        aspect_sections = re.split(r'(\n\*\*Compliance Aspect:.*? \*\*)\n', llm_response_content, flags=re.DOTALL)
+
+        if aspect_sections and aspect_sections[0].strip():
+            try:
+                pdf.set_font("NotoSans", "B", 13)
+            except:
+                pdf.set_font("Helvetica", "B", 13)
+            pdf.multi_cell(0, 6, aspect_sections[0].strip())
+
+        for i in range(1, len(aspect_sections), 2):
+            header = aspect_sections[i].strip()
+            content = aspect_sections[i + 1].strip() if i + 1 < len(aspect_sections) else ""
+
+            pdf.ln(4)
+            try:
+                pdf.set_font("NotoSans", "B", 13)
+            except:
+                pdf.set_font("Helvetica", "B", 13)
+            pdf.multi_cell(0, 7, header)
+            pdf.ln(2)
+
+            try:
+                pdf.set_font("NotoSans", "", 11)
+            except:
+                pdf.set_font("Helvetica", "", 11)
+            pdf.multi_cell(0, 6, content)
+            pdf.ln(4)
+        
         pdf.ln(8)
 
         try:
@@ -274,13 +337,13 @@ def write_individual_response_to_pdf(llm_response_content, original_filename, ou
     bolditalic_font_path = os.path.join(font_dir, "NotoSans-BoldItalic.ttf")
 
     if os.path.exists(regular_font_path):
-        pdf.add_font("NotoSans", "", regular_font_path)
+        pdf.add_font("NotoSans", "", regular_font_path, uni=True)
     if os.path.exists(italic_font_path):
-        pdf.add_font("NotoSans", "I", italic_font_path)
+        pdf.add_font("NotoSans", "I", italic_font_path, uni=True)
     if os.path.exists(bold_font_path):
-        pdf.add_font("NotoSans", "B", bold_font_path)
+        pdf.add_font("NotoSans", "B", bold_font_path, uni=True)
     if os.path.exists(bolditalic_font_path):
-        pdf.add_font("NotoSans", "BI", bolditalic_font_path)
+        pdf.add_font("NotoSans", "BI", bolditalic_font_path, uni=True)
 
     pdf.add_page()
     try:
@@ -329,31 +392,31 @@ if __name__ == "__main__":
         print(f"Error: No content loaded from guidelines document '{GUIDELINES_DOC_NAME}'. Exiting.")
         exit()
 
-    # Chunk the guidelines for the vector store
+    # --- 2. Chunk the guidelines for the vector store ---
     guidelines_chunks = split_documents_into_chunks(raw_guidelines_docs, chunk_size=700, chunk_overlap=150) # Adjust chunking for guidelines
+    print("Creating Vector Store For Guidelines Document...")
     guidelines_vectorstore = create_vector_store(guidelines_chunks, embeddings)
     print(f"Guidelines document '{GUIDELINES_DOC_NAME}' processed and indexed into vector store.")
 
-
+    # --- 3. Setup to call the compliance checker ---
     compiled_reports_list = [] # For the consolidated report
 
     if not LIST_OF_MANUAL_FILES:
         print("Error: LIST_OF_MANUAL_FILES is empty. Please add file paths to process. Exiting.")
         exit()
 
-    output_directory_base = "./OM_compliance_reports" # New output directory for compliance
+    output_directory_base = "./Manual_Overhaul_Tool_Reports"  # Base directory for output reports
     os.makedirs(output_directory_base, exist_ok=True)
 
     individual_reports_dir = os.path.join(output_directory_base, "individual_compliance_reports")
     os.makedirs(individual_reports_dir, exist_ok=True)
     print(f"Individual compliance reports will be saved in: {individual_reports_dir}")
 
-
+    # --- 4. Process each manual chunk file and update reports ---
     for chunk_filename_short in LIST_OF_MANUAL_FILES:
         full_filepath = os.path.join(DOCUMENT_LIBRARY_PATH, chunk_filename_short)
         
         # Load the content of the current manual chunk
-        # load_document_content returns a list of Document objects (one per page of the chunk file)
         current_manual_chunk_docs, loaded_filename = load_document_content(full_filepath)
 
         if not current_manual_chunk_docs: # Check if list is empty
@@ -380,7 +443,7 @@ if __name__ == "__main__":
         # Store the result for the consolidated report
         compiled_reports_list.append({"chunk_filename": loaded_filename, "llm_response": compliance_result_text})
         
-        # --- Save each individual LLM response (compliance report) to its own PDF ---
+        # Save each individual LLM response (compliance report) to its own PDF 
         base_name = os.path.splitext(loaded_filename)[0]
         individual_pdf_output_filename = os.path.join(individual_reports_dir, f"compliance_report_for_{base_name}.pdf")
         
@@ -393,13 +456,13 @@ if __name__ == "__main__":
 
         print(f"\n{'='*20} End of Analysis for '{loaded_filename}' {'='*20}\n")
     
+    # --- 5. Compile and Save the Consolidated Compliance Report ---
     print("\n--- Full Compiled Compliance Report (Console Preview) ---")
     for chunk_report in compiled_reports_list:
         print(f"\n### Compliance Report for Chunk: {chunk_report['chunk_filename']}\n")
         print(chunk_report["llm_response"])
         print("\n--------------------------------------------------")
 
-    # Save the consolidated compliance report
     consolidated_pdf_filename = os.path.join(output_directory_base, f"consolidated_compliance_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
     try:
         write_report_to_pdf(compiled_reports_list, consolidated_pdf_filename)
