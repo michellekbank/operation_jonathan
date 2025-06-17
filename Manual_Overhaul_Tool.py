@@ -44,7 +44,7 @@ print("Starting Compliance Checker...") # Debugging message to indicate the scri
 # --- Configuration Parameters ---
 # These parameters can be adjusted based on the specific requirements of the compliance check
 TOP_K_GUIDELINES = 5 # This is the number of top relevant guideline chunks to retrieve for each compliance aspect check
-TEMPERATURE = 0.1 # This controls the randomness of the LLM's responses. Lower values make it more deterministic and less creative.
+TEMPERATURE = 0.08 # This controls the randomness of the LLM's responses. Lower values make it more deterministic and less creative.
 # if you want more creative responses, you can increase this value (e.g., 0.5 or 0.7), but for compliance checks, a lower value is usually better.
 
 # --- Configuration ---
@@ -58,15 +58,16 @@ GUIDELINES_DOC_NAME = "41 PNCA 2025.pdf" # Name of your guidelines document
     # additionally, the files should be in the format of .docx, .pdf, or .txt.
     # the files should also be around 5000 characters or less in length, as the LLM can handle up to 8000 characters per prompt.
     # Longer files may result in suboptimal performance or errors.
-LIST_OF_MANUAL_FILES = ["section 101-112.docx",
-                         "section 201-202.docx", "section 203–204.docx", 
-                         "section 205–206.5.docx", "section 304.docx", 
-                         "section 323-325.docx", "section 506-510.docx", 
-                         "section 707-711.docx", "sections 206.5A–206.5B.docx", 
-                         "sections 207–213.docx", "sections 214–215.docx", 
-                         "sections 216–218.docx", "sections 219–220.docx", 
-                         "sections 301–303.docx", "sections 305–309.docx", 
-                         "sections 310–317.docx", "sections 318–322.docx", 
+LIST_OF_MANUAL_FILES = [#"section 101-112.docx",
+                        #  "section 201-202.docx", "section 203–204.docx", 
+                        #  "section 205–206.5.docx", "section 304.docx", 
+                        #  "section 323-325.docx", "section 506-510.docx", 
+                        #  "section 707-711.docx", "sections 206.5A–206.5B.docx", 
+                        #  "sections 207–213.docx", 
+                        #  "sections 214–215.docx", 
+                        #  "sections 216–218.docx", "sections 219–220.docx", 
+                        #  "sections 301–303.docx", "sections 305–309.docx", 
+                        #  "sections 310–317.docx", "sections 318–322.docx", 
                          "sections 326–330.docx", "sections 401–407.docx", 
                          "sections 501–505.docx", "sections 601–603.docx", 
                          "sections 701–706.docx", "sections 801–807.docx", 
@@ -112,7 +113,7 @@ print(f"Initializing LLM with LM Studio (local OpenAI-compatible API) from: {lm_
 llm = ChatOpenAI(base_url = lm_studio_base_url, api_key="lm-studio", model="local-model",temperature = TEMPERATURE)
 
 print(f"Initializing Embeddings with GPU-Based HuggingFaceEmbeddings.")
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", model_kwargs={"device": "gpu" if llm._device == "cuda" else "cpu"})
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", model_kwargs={"device": "cpu"})
 
 # -- FUNCTIONS --
 
@@ -212,7 +213,7 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_filename, guide
                 * **COMPLIANT:** If the manual chunk fully meets the guideline.
                 * **NON-COMPLIANT:** If the manual chunk clearly violates or contradicts the guideline.
                 * **PARTIALLY COMPLIANT:** If the manual chunk *attempts to address* the guideline but does so incompletely, vaguely, or with minor deficiencies that prevent full adherence.
-                * **NOT ADDRESSED:** If the 'Operations Manual Chunk' **does not contain sufficient information or discussion relevant to this specific guideline aspect**, or if the aspect is entirely absent from the manual's content. Do not use 'PARTIALLY COMPLIANT' if the manual simply lacks content on the topic.
+                * **NOT ADDRESSED:** If the 'Operations Manual Chunk' **does not contain sufficient information or discussion relevant to this specific guideline aspect**, or if the aspect is entirely absent from the manual's content. Do not use 'PARTIALLY COMPLIANT' if the manual simply lacks content on the topic. This chunk is only a small section of the manual, so it is not necessary to address every aspect in every chunk. If the aspect is not addressed in this chunk, it is acceptable to mark it as 'NOT ADDRESSED'.
 
             2.  **Explanation & Reasoning:** In all cases OTHER THAN "NOT ADDRESSED," provide a concise, objective explanation for your status determination. SKIP THIS STEP AND DO NOT ADD EXPLANATION WHEN THE ASPECT IS NOT ADDRESSED.
             3.  **Verbatim Citations (Crucial):** You MUST cite specific, verbatim phrases or sentences from **both** the 'Operations Manual Chunk' and the 'Relevant Guidelines' to support your reasoning. For each citation, include its original source (e.g., "Manual: '...' (from Section X.Y)", "Guideline: '...' (from Page Z)"). These citations are paramount for traceability. If no direct citation from the manual can be found to support a compliance claim for 'COMPLIANT' or 'NON-COMPLIANT', consider the possibility that it is 'NOT ADDRESSED'.

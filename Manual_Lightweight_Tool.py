@@ -60,7 +60,7 @@ GUIDELINES_DOC_NAME = "41 PNCA 2025.pdf" # Name of your guidelines document
     # additionally, the files should be in the format of .docx, .pdf, or .txt.
     # the files should also be around 5000 characters or less in length, as the LLM can handle up to 8000 characters per prompt.
     # Longer files may result in suboptimal performance or errors.
-LIST_OF_MANUAL_FILES = [ "Section 101-112.docx",
+LIST_OF_MANUAL_FILES = ["Section 101-112.docx",
                         "section 201-202.docx", "section 203–204.docx",
                         "section 205–206.5.docx", "section 304.docx",
                         "section 323-325.docx", "section 506-510.docx",
@@ -70,7 +70,8 @@ LIST_OF_MANUAL_FILES = [ "Section 101-112.docx",
                         "sections 301–303.docx", 
                         "sections 305–309.docx",
                         "sections 310–317.docx", "sections 318–322.docx",
-                        "sections 326–330.docx", "sections 401–407.docx",
+                        "sections 326–330.docx", 
+                        "sections 401–407.docx",
                         "sections 501–505.docx", "sections 601–603.docx",
                         "sections 701–706.docx", "sections 801–807.docx",
                         "sections 901–907.docx"
@@ -183,14 +184,16 @@ def get_llm_relevant_aspects(manual_chunk_content, available_aspects, llm_model)
 
     prompt = f"""
     You are an expert in regulatory compliance and document analysis.
-    Your task is to identify which of the provided 'Predefined Compliance Aspects' are directly and substantively addressed, discussed, or highly relevant within the 'Operations Manual Chunk'.
+    Your task is to identify which of the provided 'Predefined Compliance Aspects' are directly and substantively addressed, discussed, or highly relevant within the 'Operations Manual Chunk'. 
 
     **Instructions:**
     1.  Review the 'Operations Manual Chunk' carefully.
     2.  For each aspect in the 'Predefined Compliance Aspects' list, determine if it is explicitly covered or significantly discussed in the chunk.
-    3.  **Strictly adhere:** If an aspect is only mentioned in passing, is vaguely related, or is not the primary focus, DO NOT include it. Prioritize aspects that are clearly the subject of content within the manual chunk.
+    3.  **Strictly adhere:** If an aspect is only mentioned in passing, is vaguely related, or is not the primary focus, DO NOT include it. Prioritize aspects that are clearly the subject of content within the manual chunk. Keep your list short, around 5-10 items. Items in the list can encapsulate more conceptually, but there should only be a few items in the list.
     4.  Return your answer as a list of the exact aspect names **SEPARATED BY NEWLINES** from the 'Predefined Compliance Aspects' list.
     5.  If absolutely no aspects from the list are relevant, respond with **"NONE"**.
+
+    Additionally, if there are policies or procedures not included in the manual chunk that you believe should be included, make note of these. This will help ensure that the compliance check is thorough and comprehensive.
 
     ---
     **Operations Manual Chunk:**
@@ -568,7 +571,6 @@ if __name__ == "__main__":
         print(chunk_report["llm_response"])
         print("\n--------------------------------------------------")
 
-    # --- 5. Compile and Save the Consolidated Compliance Report ---
     consolidated_pdf_filename = os.path.join(output_directory_base, f"consolidated_compliance_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
     try:
         write_report_to_pdf(compiled_reports_list, consolidated_pdf_filename)
