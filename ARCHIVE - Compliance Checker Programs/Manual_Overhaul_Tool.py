@@ -1,5 +1,4 @@
 # Designed by: Michelle Bank and Carter Musheno
-# Programmed and developed by: Michelle Bank
 #     for assistance, please contact: mbank@andrew.cmu.edu
 
 #     By the MOU signed by the appropriate parties including the student consultant and representatives from ROPSSA/HCF and Carnegie Mellon, this 

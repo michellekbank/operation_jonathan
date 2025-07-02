@@ -1,30 +1,10 @@
 # Designed by: Michelle Bank and Carter Musheno
-# Programmed and developed by: Michelle Bank
 #     for assistance, please contact: mbank@andrew.cmu.edu
 
 #     By the MOU signed by the appropriate parties including the student consultant and representatives from ROPSSA/HCF and Carnegie Mellon, this 
 #     program is intellectual property of Michelle Bank and Carter Musheno. ROPSSA and HCF have a worldwide, non-exclusive, royalty-free right and license to copy,
 #     modify, publish, distribute, and otherwise use the program and its documentation for purposes consistent with ROPSSA and HCF's mission and 
 #     status as an agency.
-
-#     This program is designed to be used by ROPSSA & HCF for the purpose of checking compliance of the Operations Manual and other various documents
-#     against a set of guidelines.
-
-# Description: This script is designed to check a small section of a document against a set of guidelines.
-#     It analyzes the section to determine appropriate compliance aspects then loads relevant chunks from the guidelines document and checks the section
-#     against the appropriate guidelines.
-
-# Intented Use: It is designed to be used when a small chunk manual is updated and needs to be checked against a set of guidelines.
-#     Runtime for this script is much shorter than the full compliance checker script, as it only checks the most relevant aspects of the guidelines.
-#     This makes it an effective tool for quickly checking compliance of small sections of the manual without needing to run the full compliance checker.
-#     Consider specifying what was specifically updated in the manual chunk to help the LLM focus on the most relevant aspects. This can be done by including this
-#     information in the list of "aspects" to check, or by providing a brief description of the changes made to the manual chunk in the LLM prompt.
-
-# Troubleshooting: If you encounter issues with the script, please check the following:
-#   1. Ensure that the LM Studio is running and accessible at the specified base URL.
-#   2. Ensure that the guidelines document and manual files are present in the specified directories.
-#   3. Ensure that the required Python packages are installed and up-to-date.
-#   4. If you encounter any errors, please check the console output for debugging messages and error messages.
 
 # --- import necessary libraries ---
 
@@ -177,7 +157,7 @@ def get_relevant_guideline_context(query_aspect, guidelines_vectorstore, top_k_v
     guidelines_context = "\n\n".join(guidelines_context_parts)
     return guidelines_context, True
 
-# =This function uses the LLM to identify which compliance aspects are relevant to a given manual chunk.
+# This function uses the LLM to identify which compliance aspects are relevant to a given manual chunk.
 #     if there is a specific aspect you have changed in the manual chunk, you can include it manually after the LLM has selected the relevant aspects.
 def get_llm_relevant_aspects(manual_chunk_content, available_aspects, llm_model):
     aspects_list_str = "\n".join([f"- {a}" for a in available_aspects])

@@ -1,3 +1,11 @@
+# Designed by: Michelle Bank and Carter Musheno
+#     for assistance, please contact: mbank@andrew.cmu.edu
+
+#     By the MOU signed by the appropriate parties including the student consultant and representatives from ROPSSA/HCF and Carnegie Mellon, this 
+#     program is intellectual property of Michelle Bank and Carter Musheno. ROPSSA and HCF have a worldwide, non-exclusive, royalty-free right and license to copy,
+#     modify, publish, distribute, and otherwise use the program and its documentation for purposes consistent with ROPSSA and HCF's mission and 
+#     status as an agency.
+
 import os
 import re
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
@@ -8,7 +16,7 @@ from datetime import datetime
 
 print("Starting Operations Manual Editor...") # Debugging message to indicate the script has started
 
-TEMPERATURE = 0.4 # This controls the randomness of the LLM's responses. Lower values make it more deterministic and less creative.
+TEMPERATURE = 0.5 # This controls the randomness of the LLM's responses. Lower values make it more deterministic and less creative.
 # if you want more creative responses, you can increase this value (e.g., 0.5 or 0.7), but for compliance checks, a lower value is usually better.
 
 # --- Configuration ---
