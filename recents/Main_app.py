@@ -229,20 +229,19 @@ def get_llm_relevant_aspects(manual_chunk_content, available_aspects, llm_model)
 
     prompt = f"""
     You are an expert in regulatory compliance and document analysis.
-    Your task is to identify which of the provided 'Predefined Compliance Aspects' are directly and substantively addressed, discussed, or highly relevant within the 'Operations Manual Chunk'.
-    
-    **This list will be used as search queries** to retrieve relevant sections from a comprehensive guidelines document for a detailed compliance check. Therefore, focus on generating aspects that will yield precise and useful guideline content.
-        FOR EXAMPLE: 
-            *Dates, numbers, and figures are important to include. For example, if the manual states "the maximum fine for employees is $10,000" make sure "Policies on maximum fines for employees" is in the list.
-            * Specific inclusions and exclusions are important to include. For example, if the manual states "Self-employed individuals are not subject to this policy" make sure "Policies on self-employed individuals" is in the list.
+    Your task is to identify which of the provided 'Predefined Compliance Aspects' are directly and substantively addressed, discussed, or highly relevant within the 'Operations Manual Chunk'. 
+
     **Instructions:**
-    1.  Review the portion of the operations manual in "Operations Manual Chunk" carefully.
-    2.  Using the aspects in the 'Predefined Compliance Aspects' list as reference, find **explicitly covered or significantly discussed** compliance topics, policies, procedures, or requirements that are **directly relevant** to the manual chunk.
-    2.  **Exclude** aspects that are only vaguely related or briefly mentioned. Focus on primary subjects of the chunk.
-    3.  **Output Format:** Return your answer as a list of the exact relevant aspect names, **each on a new line**.
-    4.  **List Length:** Keep the list short and high-level (aim for 5 items) but allow items to conceptually encapsulate more.
+    1.  Review the 'Manual Chunk' carefully.
+    2.  For each aspect in the 'Predefined Compliance Aspects' list, determine if it is explicitly covered or significantly discussed in the chunk.
+    3.  **Strictly adhere:** If an aspect is only mentioned in passing, is vaguely related, or is not the primary focus, DO NOT include it. Prioritize aspects that are clearly the subject of content within the manual chunk. Keep your list short, around 5-10 items. Items in the list can encapsulate more conceptually, but there should only be a few items in the list.
+    4.  Return your answer as a list of the exact aspect names **SEPARATED BY NEWLINES** from the 'Predefined Compliance Aspects' list.
+    5.  If absolutely no aspects from the list are relevant, respond with **"NONE"**.
+
+    Additionally, if there are policies or procedures not included in the manual chunk that you believe should be included, make note of these. This will help ensure that the compliance check is thorough and comprehensive.
+
     ---
-    **Operations Manual Chunk:**
+    **Manual Chunk:**
     {manual_chunk_content}
     ---
 
@@ -301,7 +300,7 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_index, guidelin
 
         prompt = f"""
         You are a highly analytical compliance officer. Your task is to meticulously evaluate whether the
-        'Operations Manual Chunk' explicitly complies with the 'Relevant Guidelines' provided,
+        'Manual Chunk' explicitly complies with the 'Relevant Guidelines' provided,
         specifically focusing on the aspect: "{aspect}".
 
         **Note the current date: {current_date}.** Consider evolving compliance requirements and that best practices may evolve over time.
@@ -313,18 +312,18 @@ def check_manual_compliance(manual_chunk_full_text, manual_chunk_index, guidelin
             * **COMPLIANT:** If the manual chunk fully meets the guideline.
             * **NON-COMPLIANT:** If the manual chunk clearly violates or contradicts the guideline.
             * **PARTIALLY COMPLIANT:** If the manual chunk *attempts to address* the guideline but does so incompletely, vaguely, or with minor deficiencies that prevent full adherence.
-            * **NOT ADDRESSED:** If the 'Operations Manual Chunk' **does not contain sufficient information or discussion relevant to this specific guideline aspect**, or if the aspect is entirely absent from the manual's content. Do not use 'PARTIALLY COMPLIANT' if the manual simply lacks content on the topic.
+            * **NOT ADDRESSED:** If the 'Manual Chunk' **does not contain sufficient information or discussion relevant to this specific guideline aspect**, or if the aspect is entirely absent from the manual's content. Do not use 'PARTIALLY COMPLIANT' if the manual simply lacks content on the topic.
 
         2.  **Explanation & Reasoning:** Provide a concise, objective explanation for your status determination.
 
-        3.  **Verbatim Citations (ESSENTIAL):** You **must** include direct, verbatim quotes from **both** the 'Operations Manual Chunk' and the 'Relevant Guidelines' to substantiate your reasoning. For each citation, specify its source clearly:
+        3.  **Verbatim Citations (ESSENTIAL):** You **must** include direct, verbatim quotes from **both** the 'Manual Chunk' and the 'Relevant Guidelines' to substantiate your reasoning. For each citation, specify its source clearly:
             * **Manual:** "Quote." (from Section/Page X)
             * **Guideline:** "Quote." (from Section/Page Y)
             * **If no direct manual citation for COMPLIANT/NON-COMPLIANT, consider 'NOT ADDRESSED'.**
 
         ---
 
-        **OPERATIONS MANUAL CHUNK (from {manual_chunk_index}):**
+        **MANUAL CHUNK (from {manual_chunk_index}):**
         ---
         {manual_chunk_full_text}
         ---
@@ -362,7 +361,7 @@ def editor_analyze_single_chunk(chunk_full_text, chunk_index, llm_model):
 
     # --- PROMPT FOR EDITING AND CLARITY ---
     prompt = f"""
-    You are an expert editor specializing in operations manuals and legal writings. Your task is to meticulously review and refine the provided text from an operations manual chunk.
+    You are an expert editor specializing in manuals and legal writings. Your task is to meticulously review and refine the provided text from a manual chunk.
 
     Your primary goal is to enhance clarity, correct grammar and typos, and improve wording, ensuring the original meaning and intent are perfectly preserved.
 
@@ -370,17 +369,17 @@ def editor_analyze_single_chunk(chunk_full_text, chunk_index, llm_model):
     1.  **Editing Scope**: The aim is to modernize, improve clarity, and fix grammatical errors including incorrect capitalization and typos while maintaining the original meaning. You must **NOT** change the substantive content or operational policies described in the text.
     2.  **No Summarization or Omission**: You must **NOT** summarize, paraphrase, or omit any substantive information, sections, or concepts from the original manual chunk. *IMPORTANT*: All original content that is relevant to operational policy *MUST* be present in your edited output.
     3.  **Title**: If section titles or headings are deemed inappropriate or unclear, you may suggest new titles that better reflect the content of the section. However, ensure that the original meaning is preserved.
-    **Your output should ONLY be the polished, edited version of the operations manual content.** Do not add any introductory remarks, concluding statements, or meta-commentary from yourself.
+    **Your output should ONLY be the polished, edited version of the manual content.** Do not add any introductory remarks, concluding statements, or meta-commentary from yourself.
 
     *** REMEMBER TO PRESERVE ALL CITATIONS!!!!!***
 
     ---
-    **Operations Manual Content for Editing:**
+    **Manual Content for Editing:**
     ---
     {chunk_full_text}
     ---
 
-    **Your Polished Operations Manual Content:**
+    **Your Polished Manual Content:**
     """
     # --- END OF PROMPT ---
     try:
@@ -1631,7 +1630,7 @@ def create_home_screen(parent):
 
 # --- MAIN GUI WINDOW ---
 root = tk.Tk()
-root.title("ROPSSA Operations Manual Tool")
+root.title("ROPSSA AI Tool")
 root.geometry("1000x750") # Initial size for the home screen
 
 # Create a container frame for the main application, initially hidden
